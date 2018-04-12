@@ -1,4 +1,5 @@
 import argparse
+import os
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
@@ -118,6 +119,9 @@ def test(epoch):
         if batch_idx == 0:
             n = min(8, args.batch_size)
             comparision = torch.cat([data[:n], data_rec.view_as(data)[:n]])
+            if not os.path.exists(args.root+"./vae_generation/rec/"):
+                os.system("mkdir {}".format(args.root+"./vae_generation/rec/"))
+
             torchvision.utils.save_image(tensor=comparision.view(-1,1,28,28).data.cpu(), filename=args.root+"./vae_generation/rec/comparision_{}.png".format(epoch), nrow=8)
 
     print("=> epoch:{}, test loss:{:.5f}".format(epoch, test_loss/len(test_loader.dataset)))
@@ -132,6 +136,9 @@ if __name__ == "__main__":
         sampler = torch.rand(64, args.hidden_dim)
         sampler = Variable(sampler, volatile=True)
         gene_sampler = model.decode(sampler)
-
+        
+        if not os.path.exists(args.root+"./vae_generation/rec/"):
+                os.system("mkdir {}".format(args.root+"./vae_generation/rec/"))
+                
         torchvision.utils.save_image(tensor=gene_sampler.data.cpu(), filename=args.root+"./vae_generation/rec/gene_sampler_{}.png".format(epoch), nrow=8)
         
