@@ -19,6 +19,9 @@ parser.add_argument("--root", type=str, default="/home/jiguo/pytorch_examples",
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
+torch.manual_seed(1)
+if args.cuda:
+    torch.cuda.manual_seed(1)
 
 
 train_loader = torch.utils.data.DataLoader(
@@ -53,7 +56,9 @@ class VAE(nn.Module):
     def reparameter(self, mu, log_var):
         if self.training:
             std = torch.exp(log_var*0.5)
-            eps = Variable(torch.Tensor(std.size()).normal_())
+            eps = Variable(std.data.new(std.size()).normal_())
+            if args.cuda:
+                eps.cuda()
             return mu + eps.mul(std)
         else:
             return mu
@@ -67,10 +72,12 @@ class VAE(nn.Module):
         mu, log_var = self.encode(input_data)
         z = self.reparameter(mu, log_var)
         rec = self.decode(z)
-        return rec, mu, z
+        return rec, mu, log_var
 
 
 model = VAE()
+if args.cuda:
+    model.cuda()
 
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
@@ -82,6 +89,7 @@ def loss_func(input_data, rec, mu, log_var):
     """
     BCE = F.binary_cross_entropy(rec.view(-1, 28*28), input_data.view(-1, 28*28), size_average=False)  #why the size_average is False
     # -0.5*sum(1+log(sigma^2)-mu^2-sigma^2), how this func is constructed
+    # https://stats.stackexchange.com/questions/60680/kl-divergence-between-two-multivariate-gaussians
     KLD = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())
     return BCE + KLD
 
@@ -90,6 +98,9 @@ def train(epoch):
     train_loss = 0
     for batch_idx, (data, label) in enumerate(train_loader):
         data = Variable(data)
+        if args.cuda:
+            data = data.cuda()
+
         data_rec, mu, log_var = model.forward(data)
         loss = loss_func(input_data=data, rec=data_rec, mu=mu, log_var=log_var)
 
@@ -110,6 +121,8 @@ def test(epoch):
     test_loss = 0
     for batch_idx, (data, label) in enumerate(test_loader):
         data = Variable(data, volatile=True)
+        if args.cuda:
+            data = data.cuda()
 
         data_rec, mu, log_var = model(data)
         loss = loss_func(data, data_rec, mu, log_var)
@@ -135,6 +148,8 @@ if __name__ == "__main__":
         #sample
         sampler = torch.rand(64, args.hidden_dim)
         sampler = Variable(sampler, volatile=True)
+        if args.cuda:
+            sampler = sampler.cuda()
         gene_sampler = model.decode(sampler)
         
         if not os.path.exists(args.root+"./vae_generation/rec/"):

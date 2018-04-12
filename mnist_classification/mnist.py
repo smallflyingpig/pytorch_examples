@@ -14,14 +14,14 @@ parser.add_argument("--batch_size", type=int, default=64, metavar='N', help="bat
 parser.add_argument("--learning_rate", type=float, default=1e-2, metavar="LR", help="learning rate for training, default 10^-2")
 parser.add_argument("--not_cuda",action="store_true",default=True, help="disable the cuda")
 parser.add_argument("--epoches", type=int, default=10, help="set the training epoches, default 10")
-parser.add_argument("--root", type=str, default="/home/jiguo/pytorch_examples", 
+parser.add_argument("--root", type=str, default="/home/lijiguo/pytorch_examples", 
                     help="root path for 'pytorch_examples', default '/home/jiguo/pytorch_examples'")
 args = parser.parse_args()
 
 args.cuda = not args.not_cuda and torch.cuda.is_available()
 
 train_loader=torch.utils.data.DataLoader( 
-            torchvision.datasets.MNIST(root=args.root+"./data/mnist",train=True, download=False, 
+            torchvision.datasets.MNIST(root=args.root+"./data/mnist",train=True, download=True, 
             transform=transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.1307,),(0.3081,))])),
             batch_size=args.batch_size,shuffle=True)
 
@@ -105,8 +105,8 @@ def test():
     print("Save idx:{}, test loss:{}, accuracy:{}".format(save_idx, test_loss, accuracy))
 
     if not os.path.exists(args.root+"./mnist_classification/model/"):
-        print("path ({}) does not exist, create it")
-        os.system("mkdir {}".format(args.root+"./mnist_classification/model/"))
+        print("path ({}) does not exist, create it".format(args.root+"./mnist_classification/model/"))
+        os.system("mkdir {}".format(args.root+"./mnist_classification/model"))
 
     torch.save(model.state_dict(),args.root+"./mnist_classification/model/"+"./model_{}.pytorch".format(save_idx))
     save_idx += 1
