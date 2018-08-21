@@ -17,6 +17,9 @@ Note: maybe something wrong about the loss curve
 ### result of DCGAN
 ![result](https://note.youdao.com/yws/public/resource/7baabd56fbc268806e54db0929370c5f/xmlnote/2F62A636123A4567AF89E42665ED8D26/23005)
 
+## improved dcgan
+improved DCGAN model accdording to **improved Techniques for Training GANs**
+
 ## WGAN
 WGAN model according **Wasserstein GAN**
 
@@ -25,3 +28,12 @@ WGAN model according **Wasserstein GAN**
 
 ### result of WGAN
 ![result](https://note.youdao.com/yws/public/resource/7baabd56fbc268806e54db0929370c5f/xmlnote/8A95B2EF0AAA4D04BC78362CE8FE5A1A/23014)
+
+## WGAN-GP
+WGAN-GP model according to **Improved Training of Wasserstein GAN**
+
+## LSGAN
+LSGAN model according to **least square generative adversarial net**
+
+## BEGAN
+BEGAN model according to **BEGAN:Boundary Equilibrium Generative Adversarial Networks**
