@@ -212,6 +212,7 @@ def train(epoch):
 
         # updata k
         param_k += (param_lambda*(param_gamma*loss_D_real - loss_G)).item()
+        param_k = max(min(param_k, 1),0)
 
         writer.add_scalars(main_tag="loss", tag_scalar_dict={
             "loss_d":loss_D.cpu().item(),
