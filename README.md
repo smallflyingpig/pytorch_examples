@@ -1,5 +1,7 @@
 # pytorch_examples
 
+*Note: go to wiki for loss curve and sample result*
+
 ## gan_plain
 GAN model according to Generative Adversarial Nets
 
@@ -11,23 +13,12 @@ VAE model according to **Auto-encoding variational bayes**
 
 ## dcgan
 DCGAN model according to **unsupervised representation learning with deep convolutional generative adversarial**
-### loss curve for DCGAN
-![loss curve](https://note.youdao.com/yws/public/resource/7baabd56fbc268806e54db0929370c5f/xmlnote/324DBB98246A4326B6490B43B7F05794/23003)
-Note: maybe something wrong about the loss curve
-### result of DCGAN
-![result](https://note.youdao.com/yws/public/resource/7baabd56fbc268806e54db0929370c5f/xmlnote/2F62A636123A4567AF89E42665ED8D26/23005)
 
 ## improved dcgan
 improved DCGAN model accdording to **improved Techniques for Training GANs**
 
 ## WGAN
 WGAN model according **Wasserstein GAN**
-
-### loss curve of WGAN
-![loss curve](https://note.youdao.com/yws/public/resource/7baabd56fbc268806e54db0929370c5f/xmlnote/DF2A9CB327EB4B809B84418FBC6FAC57/23011)
-
-### result of WGAN
-![result](https://note.youdao.com/yws/public/resource/7baabd56fbc268806e54db0929370c5f/xmlnote/8A95B2EF0AAA4D04BC78362CE8FE5A1A/23014)
 
 ## WGAN-GP
 WGAN-GP model according to **Improved Training of Wasserstein GAN**
