@@ -24,7 +24,7 @@ args = parser.parse_args()
 
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
-model_dir = "./dcgan"
+model_dir = "./improved_dcgan"
 log_dir = os.path.join(args.root, model_dir, "./log")
 if not os.path.exists(log_dir):
     os.mkdir(log_dir)
@@ -113,10 +113,11 @@ class Discriminator(nn.Module):
             # 256 x 6 x 6 --> 512 x 3 x 3
             nn.Conv2d(256, 512, 3, 2, 1, bias=False),
             nn.BatchNorm2d(512),
-            nn.ReLU(True)
-        )
-        self.output = nn.Sequential(
+            nn.ReLU(True),
             nn.Conv2d(512, 1, 3, 1, 0),
+        )
+        # Note: do not use the feature after ReLU for matching
+        self.output = nn.Sequential(
             nn.Sigmoid()
         )
 
@@ -128,7 +129,7 @@ class Discriminator(nn.Module):
         """
         x_feature = self.net(z)
         x = self.output(x_feature)
-        return x.squeeze()
+        return x.squeeze(), x_feature
 
 def loss_func(input, target):
     error = F.binary_cross_entropy(input, target)
@@ -153,6 +154,7 @@ def train(epoch):
     global batch_cnt
     global save_idx
 
+    mse_loss = nn.MSELoss()
     model_D.train()
     model_G.train()
     for batch_idx, (data, label) in enumerate(train_loader):
@@ -161,10 +163,12 @@ def train(epoch):
         #real data
         data_real = data
         label_real = torch.Tensor(batch_size).requires_grad_(False).fill_(1)
+        label_real_smoothing = label_real.sub(0.1)
+
         data_real = Variable(data_real)
 
         if args.cuda:
-            data_real, label_real = data_real.cuda(), label_real.cuda()
+            data_real, label_real, label_real_smoothing = data_real.cuda(), label_real.cuda(), label_real_smoothing.cuda()
 
         pred_real = model_D.forward(data_real)
         
@@ -179,15 +183,14 @@ def train(epoch):
 
         #update D
         model_D.zero_grad()
-        pred_D_real = model_D.forward(data_real)
-        pred_D_fake = model_D.forward(data_fake.detach())
-        loss_D_real = loss_func(pred_D_real, label_real)
+        pred_D_real, x_real_feature = model_D.forward(data_real)
+        pred_D_fake, x_fake_feature = model_D.forward(data_fake.detach())
+        # use label smoothing instead label
+        loss_D_real = loss_func(pred_D_real, label_real_smoothing)
         loss_D_fake = loss_func(pred_D_fake, label_fake)
         loss_D = (loss_D_real+loss_D_fake)/2
 
-        #pred_D = model_D.forward(torch.cat([data_real, data_fake]))
-        #loss_D = loss_func(pred_D, torch.cat([label_real, label_fake]))
-
+    
         loss_D.backward()
         optimizer_D.step()
 
@@ -196,9 +199,11 @@ def train(epoch):
         if args.cuda:
             z = z.cuda()
         data_fake = model_G.forward(z)
-        pred_G = model_D.forward(data_fake)
+        _, x_real_feature = model_D.forward(data_real)
+        pred_G, x_fake_feature = model_D.forward(data_fake)
         model_G.zero_grad()
-        loss_G = loss_func(pred_G, label_real)
+        # use feature matching loss instead
+        loss_G = mse_loss(x_fake_feature.mean(), x_real_feature.detach().mean()) # + loss_func(pred_G, label_real)
         loss_G.backward()
         optimizer_G.step()
 
@@ -221,8 +226,8 @@ def train(epoch):
             if not os.path.exists(os.path.join(args.root, model_dir, "./model/")):
                 os.system("mkdir {}".format(os.path.join(args.root, model_dir, "./model/")))
             
-            torch.save(model_G.state_dict(), f=os.path.join(args.root, model_dir, "./model/model_G_{}.pytorch".format(save_idx)))
-            torch.save(model_D.state_dict(), f=os.path.join(args.root, model_dir, "./model/model_D_{}.pytorch".format(save_idx)))
+            #torch.save(model_G.state_dict(), f=os.path.join(args.root, model_dir, "./model/model_G_{}.pytorch".format(save_idx)))
+            #torch.save(model_D.state_dict(), f=os.path.join(args.root, model_dir, "./model/model_D_{}.pytorch".format(save_idx)))
             save_idx += 1
 
 

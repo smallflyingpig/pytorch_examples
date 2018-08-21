@@ -64,20 +64,20 @@ class Generator(nn.Module):
         self.channel = channel
         self.net = nn.Sequential(
             # batch x 10 x 1 x 1 --> batch x 512 x 3 x 3
-            nn.ConvTranspose2d(self.noise_dim, 512, 3, 1, 0, bias=False),
-            nn.BatchNorm2d(512),
+            nn.ConvTranspose2d(self.noise_dim, 512, 3, 1, 0, bias=True),
+            #nn.BatchNorm2d(512),
             nn.ReLU(True),
             # batch x 512 x 3 x 3 --> batch x 256 x 6 x 6
-            nn.ConvTranspose2d(512, 256, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(256),
+            nn.ConvTranspose2d(512, 256, 4, 2, 1, bias=True),
+            #nn.BatchNorm2d(256),
             nn.ReLU(True),
             # batch x 256 x 6 x 6 --> batch x 128 x 12 x 12
-            nn.ConvTranspose2d(256, 128, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(128),
+            nn.ConvTranspose2d(256, 128, 4, 2, 1, bias=True),
+            #nn.BatchNorm2d(128),
             nn.ReLU(True),
             # batch x 128 x 12 x 12 --> batch x  64 x 24 x 24
-            nn.ConvTranspose2d(128, 64, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(64),
+            nn.ConvTranspose2d(128, 64, 4, 2, 1, bias=True),
+            #nn.BatchNorm2d(64),
             nn.ReLU(True),
             # batch x 64 x 24 x 24 --> batch x channel x 28 x 28
             nn.ConvTranspose2d(64, self.channel, 5, 1, 0)
@@ -100,19 +100,15 @@ class Discriminator(nn.Module):
         self.net = nn.Sequential(
             # 3 x 28 x 28 --> 64 x 24 x 24
             nn.Conv2d(self.channel, 64, 5, 1, 0, bias=False),
-            nn.BatchNorm2d(64),
             nn.ReLU(True),
             # 64 x 24 x 24 --> 128 x 12 x 12
             nn.Conv2d(64, 128, 3, 2, 1, bias=False),
-            nn.BatchNorm2d(128),
             nn.ReLU(True),
             # 128 x 12 x 12 --> 256 x 6 x 6
             nn.Conv2d(128, 256, 3, 2, 1, bias=False),
-            nn.BatchNorm2d(256),
             nn.ReLU(True),
             # 256 x 6 x 6 --> 512 x 3 x 3
             nn.Conv2d(256, 512, 3, 2, 1, bias=False),
-            nn.BatchNorm2d(512),
             nn.ReLU(True)
         )
         self.output = nn.Sequential(
@@ -170,7 +166,7 @@ def train(epoch):
         pred_real = model_D.forward(data_real)
         
         #fake data
-        z = torch.randn(size=(batch_size, args.z_dim)).unsqueeze(2).unsqueeze(3).requires_grad_(False)
+        z = torch.randn(size=(batch_size, args.z_dim)).unsqueeze(2).unsqueeze(3).requires_grad_(True)
         label_fake = torch.Tensor(batch_size).requires_grad_(False).fill_(0)
         if args.cuda:
             z = z.cuda()
