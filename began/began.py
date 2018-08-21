@@ -154,8 +154,8 @@ if args.cuda:
     model_G.cuda()
     model_D.cuda()
 
-optimizer_G = torch.optim.Adam(model_G.parameters(), lr=1e-5)# torch.optim.SGD(model_G.parameters(), lr=1e-3, momentum=0.9)
-optimizer_D = torch.optim.Adam(model_D.parameters(), lr=1e-5)# torch.optim.SGD(model_D.parameters(), lr=1e-4, momentum=0.9)
+optimizer_G = torch.optim.Adam(model_G.parameters(), lr=1e-4)# torch.optim.SGD(model_G.parameters(), lr=1e-3, momentum=0.9)
+optimizer_D = torch.optim.Adam(model_D.parameters(), lr=1e-4)# torch.optim.SGD(model_D.parameters(), lr=1e-4, momentum=0.9)
 
 save_idx = 0
 batch_cnt = 0
@@ -169,7 +169,7 @@ def train(epoch):
     model_G.train()
     param_k = 0
     param_gamma = 1
-    param_lambda = 0.001
+    param_lambda = 0.0002
     for batch_idx, (data, label) in enumerate(train_loader):
         batch_cnt += 1
         batch_size = data.size(0)
