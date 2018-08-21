@@ -1,6 +1,6 @@
 # pytorch_examples
 
-*Note: go to wiki for loss curve and sample result*
+**Note: go to wiki for loss curve and sample result**
 
 ## gan_plain
 GAN model according to Generative Adversarial Nets
