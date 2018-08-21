@@ -24,7 +24,7 @@ args = parser.parse_args()
 
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
-model_dir = "./wgan"
+model_dir = "./ls_gan"
 log_dir = os.path.join(args.root, model_dir, "./log")
 if not os.path.exists(log_dir):
     os.mkdir(log_dir)
@@ -128,7 +128,7 @@ class Discriminator(nn.Module):
         return x.squeeze()
 
 def loss_func(input, target):
-    error = F.binary_cross_entropy(input, target)
+    error = F.mse_loss(input, target)
     return error
 
 
@@ -139,8 +139,8 @@ if args.cuda:
     model_G.cuda()
     model_D.cuda()
 
-optimizer_G = torch.optim.RMSprop(model_G.parameters(), lr=2e-4)# torch.optim.SGD(model_G.parameters(), lr=1e-3, momentum=0.9)
-optimizer_D = torch.optim.RMSprop(model_D.parameters(), lr=2e-4)# torch.optim.SGD(model_D.parameters(), lr=1e-4, momentum=0.9)
+optimizer_G = torch.optim.Adam(model_G.parameters(), lr=1e-3, betas=(0.5, 0.999))# torch.optim.SGD(model_G.parameters(), lr=1e-3, momentum=0.9)
+optimizer_D = torch.optim.Adam(model_D.parameters(), lr=1e-3, betas=(0.5, 0.999))# torch.optim.SGD(model_D.parameters(), lr=1e-4, momentum=0.9)
 
 save_idx = 0
 batch_cnt = 0
@@ -155,22 +155,22 @@ def train(epoch):
     for batch_idx, (data, label) in enumerate(train_loader):
         batch_cnt += 1
         batch_size = data.size(0)
+        label_one = torch.ones(batch_size)
+        label_zero = torch.zeros(batch_size)
+        
         #real data
         data_real = data
-        label_real = torch.Tensor(batch_size).requires_grad_(False).fill_(1)
         data_real = Variable(data_real)
 
         if args.cuda:
-            data_real, label_real = data_real.cuda(), label_real.cuda()
+            data_real, label_one, label_zero = data_real.cuda(), label_one.cuda(), label_zero.cuda()
 
         pred_real = model_D.forward(data_real)
         
         #fake data
         z = torch.randn(size=(batch_size, args.z_dim)).unsqueeze(2).unsqueeze(3).requires_grad_(True)
-        label_fake = torch.Tensor(batch_size).requires_grad_(False).fill_(0)
         if args.cuda:
             z = z.cuda()
-            label_fake = label_fake.cuda()
 
         data_fake = model_G.forward(z)
 
@@ -178,20 +178,14 @@ def train(epoch):
         model_D.zero_grad()
         pred_D_real = model_D.forward(data_real)
         pred_D_fake = model_D.forward(data_fake.detach())
-        loss_D_real = pred_D_real.mean() #loss_func(pred_D_real, label_real)
-        loss_D_fake = pred_D_fake.mean() #loss_func(pred_D_fake, label_fake)
+        loss_D_real = loss_func(pred_D_real, label_one)
+        loss_D_fake = loss_func(pred_D_fake, label_zero)
         # no log here
-        loss_D = (-loss_D_real+loss_D_fake)/2
-
-        #pred_D = model_D.forward(torch.cat([data_real, data_fake]))
-        #loss_D = loss_func(pred_D, torch.cat([label_real, label_fake]))
+        loss_D = (loss_D_real+loss_D_fake)/2
 
         loss_D.backward()
         optimizer_D.step()
-        # param clip here
-        for p in model_D.parameters():
-            p.data.clamp_(-0.02, 0.02)
-
+       
         #update G
         z = torch.randn(size=(batch_size, args.z_dim)).unsqueeze(2).unsqueeze(3).requires_grad_(False)
         if args.cuda:
@@ -200,7 +194,7 @@ def train(epoch):
         pred_G = model_D.forward(data_fake)
         model_G.zero_grad()
         # no log here
-        loss_G = -pred_G.mean() #loss_func(pred_G, label_real)
+        loss_G = loss_func(pred_G, label_one)
         loss_G.backward()
         optimizer_G.step()
 
