@@ -2,6 +2,10 @@
 
 **Note: go to wiki for loss curve and sample result**
 
+## install the environment
+```
+conda env create -f environment.yml
+```
 ## gan_plain
 GAN model according to Generative Adversarial Nets
 
