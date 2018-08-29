@@ -19,9 +19,9 @@ parser.add_argument("--batch_size", type=int, default=64, help="batch size for t
 parser.add_argument("--no_cuda", action="store_true", default=False, help="disable cuda use")
 parser.add_argument("--epoches", type=int, default=100, help="training epoches, default 10")
 parser.add_argument("--hidden_dim", type=int, default=1024, help="hidden dimension of gan. (default 1024, 3 layers total)")
-parser.add_argument("--z_dim", type=int, default=10, help="dimension of z. default 10")
+parser.add_argument("--z_dim", type=int, default=50, help="dimension of z. default 10")
 parser.add_argument("--condition_dim", type=int, default=2, help="dimension of c. default 2")
-parser.add_argument("--condition_embedding_dim", type=int, default=2, help="embedding dimension of c. default 2")
+parser.add_argument("--condition_embedding_dim", type=int, default=12, help="embedding dimension of c. default 2")
 parser.add_argument("--class_num", type=int, default=10, help="class number for info gan, default 10")
 parser.add_argument("--x_feature_dim", type=int, default=512, help="x_feature dim for D, default 512")
 args = parser.parse_args()
@@ -167,14 +167,14 @@ class Q_net(nn.Module):
         self.condition_dim = condition_dim
 
         self.classifier = nn.Sequential(
-            nn.Conv2d(self.feature_shape[0], self.feature_shape[0], 1,1,0, bias=False),
+            nn.Conv2d(self.feature_shape[0], self.feature_shape[0], 3,1,1, bias=False),
             nn.BatchNorm2d(self.feature_shape[0]),
             nn.LeakyReLU(0.2, True),
             nn.Conv2d(self.feature_shape[0], self.class_num, self.feature_shape[2],1,0, bias=True)
         )
 
         self.distribution = nn.Sequential(
-            nn.Conv2d(self.feature_shape[0], self.feature_shape[0], 1,1,0, bias=False),
+            nn.Conv2d(self.feature_shape[0], self.feature_shape[0], 3,1,1, bias=False),
             nn.BatchNorm2d(self.feature_shape[0]),
             nn.LeakyReLU(0.2, True),
             nn.Conv2d(self.feature_shape[0], self.condition_dim*2, self.feature_shape[2],1,0, bias=True)
@@ -190,7 +190,7 @@ class Q_net(nn.Module):
             mu:
             log_var:
         """
-        pred_class = F.softmax(self.classifier(x).squeeze(3).squeeze(2), dim=1)
+        pred_class = self.classifier(x).squeeze(3).squeeze(2)
         temp = self.distribution(x)
         mu, log_var = temp[:,:self.condition_dim], temp[:,self.condition_dim:]
         mu, log_var = mu.squeeze(3).squeeze(2), log_var.squeeze(3).squeeze(2)
@@ -234,8 +234,9 @@ if args.cuda:
     model_D.cuda()
     model_Q.cuda()
 
-optimizer_G = torch.optim.Adam([{'params':model_G.parameters()}, {"params":model_Q.parameters()}], lr=2e-4, betas=(0.5, 0.999))# torch.optim.SGD(model_G.parameters(), lr=1e-3, momentum=0.9)
+optimizer_G = torch.optim.Adam(model_G.parameters(), lr=1e-3, betas=(0.5, 0.999))# torch.optim.SGD(model_G.parameters(), lr=1e-3, momentum=0.9)
 optimizer_D = torch.optim.Adam(model_D.parameters(), lr=2e-4, betas=(0.5, 0.999))# torch.optim.SGD(model_D.parameters(), lr=1e-4, momentum=0.9)
+optimizer_Q = torch.optim.Adam(model_Q.parameters(), lr=2e-4, betas=(0.5, 0.999))
 
 save_idx = 0
 batch_cnt = 0
@@ -278,16 +279,19 @@ def train(epoch):
 
         #update D
         model_D.zero_grad()
+        model_Q.zero_grad()
         pred_D_real, _ = model_D.forward(data_real)
-        pred_D_fake, _ = model_D.forward(data_fake.detach())
+        pred_D_fake, x_feature_fake = model_D.forward(data_fake.detach())
+        pred_class, mu, log_var = model_Q.forward(x_feature_fake)
         loss_D_real = loss_func_D(pred_D_real, label_real)
         loss_D_fake = loss_func_D(pred_D_fake, label_fake)
-        loss_D = (loss_D_real+loss_D_fake)/2
+        loss_D_gan = (loss_D_real+loss_D_fake)/2
+        loss_D_Q = loss_func_Q(pred_class, condition_class_idx)
+        loss_D_guassian = loss_func_guanssian(condition_other, mu, log_var)
 
-        #pred_D = model_D.forward(torch.cat([data_real, data_fake]))
-        #loss_D = loss_func(pred_D, torch.cat([label_real, label_fake]))
-
+        loss_D = loss_D_gan + loss_D_Q + loss_D_guassian
         loss_D.backward()
+        optimizer_Q.step()
         optimizer_D.step()
 
         #update G
@@ -303,13 +307,16 @@ def train(epoch):
         loss_G_gan = loss_func_D(pred_G, label_real)
         loss_G_Q = loss_func_Q(pred_class, condition_class_idx.long())
         loss_G_guassian = loss_func_guanssian(condition_other, mu, log_var)
-        loss_G = loss_G_gan + loss_G_Q + 5*loss_G_guassian
+        loss_G = loss_G_gan + loss_G_Q + loss_G_guassian
         loss_G.backward()
         optimizer_G.step() 
+        optimizer_Q.step()
 
         writer.add_scalars(main_tag="loss_d", tag_scalar_dict={
             "loss_d_real":loss_D_real.cpu().item(),
-            "loss_f_fake":loss_D_fake.cpu().item()
+            "loss_d_fake":loss_D_fake.cpu().item(),
+            "loss_d_q":loss_D_Q.cpu().item(),
+            "loss_d_guassian":loss_D_guassian.cpu().item()
         }, global_step=batch_cnt)
         writer.add_scalars(main_tag="loss_g", tag_scalar_dict={
             "loss_g_gan":loss_G_gan.cpu().item(),
@@ -321,19 +328,22 @@ def train(epoch):
             "loss_g":loss_G.cpu().item()
         }, global_step=batch_cnt)
         if batch_idx%100 == 0:
-            print("==>epoch:{:4d}, [{:5d}/{:5d}], loss_D:{:10.5f}[{:10.5f},{:10.5f}], loss_G:{:10.5f}[{:10.5f},{:10.5f},{:10.5f}], save idx:{}".format(
+            print("==>epoch:{:4d}, [{:5d}/{:5d}], loss_D:{:10.5f}[{:10.5f},{:10.5f},{:10.5f},{:10.5f}], loss_G:{:10.5f}[{:10.5f},{:10.5f},{:10.5f}], save idx:{}".format(
                     epoch, batch_idx*len(data), len(train_loader.dataset), 
-                    loss_D.cpu().item(), loss_D_real.cpu().item(), loss_D_fake.cpu().item(), 
+                    loss_D.cpu().item(), loss_D_real.cpu().item(), loss_D_fake.cpu().item(), loss_D_Q.cpu().item(), loss_D_guassian.cpu().item(),
                     loss_G.cpu().item(), loss_G_gan.cpu().item(), loss_G_Q.cpu().item(), loss_G_guassian.cpu().item(),
                     save_idx))
             #save image
             if not os.path.exists(os.path.join(args.root, model_dir, "./sample/")):
                 os.system("mkdir {}".format(os.path.join(args.root, model_dir, "./sample/")))
             # sample
-            sample_data = sample(model_G)
-            torchvision.utils.save_image(tensor=sample_data.view(-1,1,28,28).data.cpu(), 
-                    filename=os.path.join(args.root, model_dir, "./sample/", "sample_{}.png".format(save_idx)), nrow=10)
-            writer.add_image(tag="fake_image", img_tensor=torchvision.utils.make_grid(sample_data, normalize=True, scale_each=True, nrow=10, range=(-1,1)), global_step=batch_cnt)
+            sample_data1, sample_data2 = sample(model_G)
+            torchvision.utils.save_image(tensor=sample_data1.view(-1,1,28,28).data.cpu(), 
+                    filename=os.path.join(args.root, model_dir, "./sample/", "sample_fake1_{}.png".format(save_idx)), nrow=10)
+            torchvision.utils.save_image(tensor=sample_data2.view(-1,1,28,28).data.cpu(), 
+                    filename=os.path.join(args.root, model_dir, "./sample/", "sample_fake1_{}.png".format(save_idx)), nrow=10)
+            writer.add_image(tag="fake_image1", img_tensor=torchvision.utils.make_grid(sample_data1, normalize=True, scale_each=True, nrow=10, range=(-1,1)), global_step=batch_cnt)
+            writer.add_image(tag="fake_image2", img_tensor=torchvision.utils.make_grid(sample_data2, normalize=True, scale_each=True, nrow=10, range=(-1,1)), global_step=batch_cnt)
             writer.add_image(tag="real_image", img_tensor=torchvision.utils.make_grid(data_real, normalize=True, scale_each=True, range=(-1,1)), global_step=batch_cnt)
             #save model
             if not os.path.exists(os.path.join(args.root, model_dir, "./model/")):
@@ -348,18 +358,21 @@ def sample(net_G):
     condition_class_idx = np.array(list(range(args.class_num)))
     condition_class = np.eye(args.class_num)[condition_class_idx.astype(np.int32)]
 
-    condition_other = np.stack([np.linspace(-1,1,10), np.ones(10)]).transpose()
-    condition_np = [np.concatenate([_class, _other]) for _class in condition_class for _other in condition_other]
+    condition_other1 = np.stack([np.linspace(-1,1,10), np.zeros(10)]).transpose()
+    condition_other2 = np.stack([np.zeros(10), np.linspace(-1,1,10)]).transpose()
+    condition_np1 = [np.concatenate([_class, _other]) for _class in condition_class for _other in condition_other1]
+    condition_np2 = [np.concatenate([_class, _other]) for _class in condition_class for _other in condition_other2]
     #condition_np = list(product(condition_class, condition_other))
 
-    condition = torch.Tensor(condition_np)
+    condition1 = torch.Tensor(condition_np1)
+    condition2 = torch.Tensor(condition_np2)
 
     #condition = torch.Tensor([torch.cat([_class, _other], 0) for _class in condition_class for _other in condition_other]).requires_grad_(False)
-    z = torch.randn(size=(condition.shape[0], args.z_dim)).unsqueeze(2).unsqueeze(3).requires_grad_(False)
+    z = torch.randn(size=(condition1.shape[0], args.z_dim)).unsqueeze(2).unsqueeze(3).requires_grad_(False)
     if args.cuda:
-        condition, z = condition.cuda(), z.cuda()
-    data_fake = net_G.forward(z, condition)
-    return data_fake
+        condition1, condition2, z = condition1.cuda(), condition2.cuda(), z.cuda()
+    data_fake1, data_fake2 = net_G.forward(z, condition1), net_G.forward(z, condition2)
+    return data_fake1, data_fake2
 
 if __name__=="__main__":
     for epoch in range(0, args.epoches):
