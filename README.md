@@ -32,3 +32,7 @@ LSGAN model according to **least square generative adversarial net**
 
 ## BEGAN
 BEGAN model according to **BEGAN:Boundary Equilibrium Generative Adversarial Networks**
+
+## InfoGAN
+InfoGAN model according to **InfoGAN: Interpretable Representation Learning by Information Maximizing Generative Adversarial Nets**
+
