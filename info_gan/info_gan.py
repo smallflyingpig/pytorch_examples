@@ -62,15 +62,14 @@ class Generator(nn.Module):
     """
     generator for GAN
     """
-    def __init__(self, noise_dim=10, condition_dim=10, condition_embedding_dim=2, channel=1):
+    def __init__(self, noise_dim=10, condition_dim=10, channel=1):
         super(Generator, self).__init__()
         self.noise_dim = noise_dim
         self.condition_dim=condition_dim
-        self.condition_embedding_dim = condition_embedding_dim
         self.channel = channel
         self.net = nn.Sequential(
             # batch x 10 x 1 x 1 --> batch x 512 x 3 x 3
-            nn.ConvTranspose2d(self.noise_dim+self.condition_embedding_dim, 512, 3, 1, 0, bias=False),
+            nn.ConvTranspose2d(self.noise_dim+self.condition_dim, 512, 3, 1, 0, bias=False),
             nn.BatchNorm2d(512),
             nn.ReLU(True),
             # batch x 512 x 3 x 3 --> batch x 256 x 6 x 6
@@ -88,15 +87,9 @@ class Generator(nn.Module):
             # batch x 64 x 24 x 24 --> batch x channel x 28 x 28
             nn.ConvTranspose2d(64, self.channel, 5, 1, 0)
         )
-        self.embedding_layer = nn.Sequential(
-            nn.Linear(self.condition_dim, self.condition_embedding_dim, bias=False),
-            nn.BatchNorm1d(self.condition_embedding_dim),
-            nn.ReLU(True)
-        )
         self.output = nn.Tanh()
     
     def forward(self, z, c):
-        c = self.embedding_layer(c)
         z_c = torch.cat([z,c.unsqueeze(2).unsqueeze(3)], 1)
         x = self.net(z_c)
         x = self.output(x)
@@ -209,12 +202,14 @@ def loss_func_guanssian(x, mu, log_var):
     """get the PDF of N(mu, log_var**2) as x
     reference: https://github.com/pianomania/infoGAN-pytorch/blob/master/trainer.py
     """
-    #logli = -0.5*torch.log(log_var.pow(2).mul(2*np.pi)+1e-6) - \
-    #        (x-mu).pow(2).div(log_var.pow(2).mul(2)+1e-6)
-    #logli = -0.5*torch.log(log_var.mul(2*np.pi)+1e-6) - \
-    #        (x-mu).pow(2).div(log_var.mul(2)+1e-6)
-    logli = F.mse_loss(mu, x)
-    return logli.mean()
+    # logli = -0.5*torch.log(log_var.pow(2).mul(2*np.pi)+1e-6) - \
+    #         (x-mu).pow(2).div(log_var.pow(2).mul(2)+1e-6)
+    # logli = -0.5*torch.log(torch.Tensor([2*np.pi])) - \
+    #         0.5*(x-mu).pow(2).div(1)
+    return 0.5*F.mse_loss(mu, x)
+    # return 1 - logli.mean(dim=1).mean()
+    # logli = F.binary_cross_entropy_with_logits(mu, x)
+    # return logli 
 
 def weights_init(m):
     classname = m.__class__.__name__
@@ -224,7 +219,7 @@ def weights_init(m):
         m.weight.data.normal_(1.0, 0.02)
         m.bias.data.fill_(0)
 
-model_G = Generator(noise_dim=args.z_dim, condition_dim=args.condition_dim+args.class_num, condition_embedding_dim=args.condition_embedding_dim)
+model_G = Generator(noise_dim=args.z_dim, condition_dim=args.condition_dim+args.class_num)
 model_D = Discriminator()
 model_Q = Q_net((args.x_feature_dim, 3,3), args.class_num, args.condition_dim)
 
@@ -259,6 +254,7 @@ def train(epoch):
         condition_class = torch.eye(args.class_num)[condition_class_idx.long()].reshape(batch_size, args.class_num)
         # condition_class[range(batch_size), condition_class_idx] = 1.0
         condition_other = (torch.rand(size=(batch_size, args.condition_dim))-0.5)/0.5
+        #condition_other = torch.rand(size=(batch_size, args.condition_dim))
         condition = torch.cat([condition_class, condition_other], 1).requires_grad_(True)
         #condition = torch.eye(10)[label].reshape(batch_size, 10)
 
@@ -360,6 +356,8 @@ def sample(net_G):
 
     condition_other1 = np.stack([np.linspace(-1,1,10), np.zeros(10)]).transpose()
     condition_other2 = np.stack([np.zeros(10), np.linspace(-1,1,10)]).transpose()
+    # condition_other1 = np.stack([np.linspace(0,1,10), np.zeros(10)]).transpose()
+    # condition_other2 = np.stack([np.zeros(10), np.linspace(0,1,10)]).transpose()
     condition_np1 = [np.concatenate([_class, _other]) for _class in condition_class for _other in condition_other1]
     condition_np2 = [np.concatenate([_class, _other]) for _class in condition_class for _other in condition_other2]
     #condition_np = list(product(condition_class, condition_other))
