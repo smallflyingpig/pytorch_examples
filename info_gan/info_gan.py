@@ -28,6 +28,10 @@ parser.add_argument("--x_feature_dim", type=int, default=512, help="x_feature di
 args = parser.parse_args()
 
 args.cuda = not args.no_cuda and torch.cuda.is_available()
+if args.cuda:
+    print("cuda in available, use cuda")
+else:
+    print("cuda in not available, use cpu")
 
 model_dir = "./info_gan"
 log_dir = os.path.join(args.root, model_dir, "./log")
