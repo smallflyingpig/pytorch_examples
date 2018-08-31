@@ -1,6 +1,8 @@
 import os
 import argparse
 import torch
+import tqdm 
+from tensorboardX import SummaryWriter
 import torchvision
 from torchvision import datasets, transforms
 import torch.optim as optim
@@ -12,13 +14,20 @@ import numpy as np
 parser = argparse.ArgumentParser(description="MNIST pytorch")
 parser.add_argument("--batch_size", type=int, default=64, metavar='N', help="batch size (default 64)")
 parser.add_argument("--learning_rate", type=float, default=1e-2, metavar="LR", help="learning rate for training, default 10^-2")
-parser.add_argument("--not_cuda",action="store_true",default=True, help="disable the cuda")
+parser.add_argument("--no_cuda",action="store_true",default=False, help="disable the cuda")
 parser.add_argument("--epoches", type=int, default=10, help="set the training epoches, default 10")
 parser.add_argument("--root", type=str, default="/home/lijiguo/pytorch_examples", 
                     help="root path for 'pytorch_examples', default '/home/jiguo/pytorch_examples'")
 args = parser.parse_args()
 
-args.cuda = not args.not_cuda and torch.cuda.is_available()
+args.cuda = not args.no_cuda and torch.cuda.is_available()
+
+model_dir = "./mnist_classification"
+log_dir = os.path.join(args.root, model_dir, "./log")
+if not os.path.exists(log_dir):
+    os.mkdir(log_dir)
+
+writer = SummaryWriter(log_dir=log_dir)
 
 train_loader=torch.utils.data.DataLoader( 
             torchvision.datasets.MNIST(root=args.root+"./data/mnist",train=True, download=True, 
@@ -43,7 +52,7 @@ class Net(torch.nn.Module):
         self.linear1 = nn.Linear(320, 50)
         self.linear2 = nn.Linear(50, 10)
 
-        self.log_softmax = nn.LogSoftmax()
+        self.log_softmax = nn.LogSoftmax(dim=1)
 
     def forward(self, input_data):
         """
@@ -69,8 +78,9 @@ def train(epoch):
     return:
     """
     model.train()
-    for batch_idx, (data, label) in enumerate(train_loader):
-        data, label = Variable(data), Variable(label)
+    loader_bar = tqdm.tqdm(train_loader)
+    for batch_idx, (data, label) in enumerate(loader_bar):
+        data, label = data.requires_grad_(), label.requires_grad_(False)
 
         torch.unsqueeze(data,2)
         pred = model.forward(data)
@@ -81,30 +91,34 @@ def train(epoch):
 
         optimizer.step()
 
+        loader_bar.set_description("[{:5s}] Epoch:{:5d}, loss:{:10.5f}".format("train", epoch, loss.cpu().item()))
         if batch_idx%100==0:
-            print("Epoch:{}[{}\{}], loss:{}".format(epoch, batch_idx*len(data), len(train_loader.dataset), loss.data[0]))
             #torch.save(model.state_dict(),"./model/model_{}.pytorch".format(save_idx))
             #save_idx += 1
+            pass
 
 
-def test():
+def test(epoch):
     global save_idx
     model.eval()
     test_loss = 0
     accuracy = 0
-    for batch_idx, (data, label) in enumerate(test_loader):
-        data, label = Variable(data, volatile=True), Variable(label, volatile=True)
+    loader_bar = tqdm.tqdm(test_loader)
+    for batch_idx, (data, label) in enumerate(loader_bar):
+        data, label = data.requires_grad_(False), label.requires_grad_(False)
         torch.unsqueeze(data,2)
         pred = model.forward(data)
-        test_loss += loss_func(pred, label).data[0]
+        loss = loss_func(pred, label)
+        test_loss += loss.cpu().item()
         pred_label = pred.data.max(1,keepdim=True)[1]
         accuracy += pred_label.eq(label.data.view_as(pred_label)).long().cpu().sum()
+        loader_bar.set_description("[{:5s}] Epoch:{:5d}, loss:{:10.5f}".format("test", epoch, loss.cpu().item()))
 
     accuracy = float(accuracy)/len(test_loader.dataset)
 
-    print("Save idx:{}, test loss:{}, accuracy:{}".format(save_idx, test_loss, accuracy))
+    print("[{:5s}] Epoch:{:5d}, loss:{:10.5f}, accuracy:{:10.5f}".format("test", epoch, test_loss, accuracy))
 
-    if not os.path.exists(args.root+"./mnist_classification/model/"):
+    if not os.path.exists(os.path.join(args.root, model_dir, "./model/")):
         print("path ({}) does not exist, create it".format(args.root+"./mnist_classification/model/"))
         os.system("mkdir {}".format(args.root+"./mnist_classification/model"))
 
@@ -115,7 +129,7 @@ def test():
 if __name__ == "__main__":
     for epoch in range(0, args.epoches):
         train(epoch)
-        test()
+        test(epoch)
 
 
 

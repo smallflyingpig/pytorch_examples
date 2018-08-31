@@ -3,6 +3,7 @@
 import argparse
 import os 
 import numpy as np
+import tqdm 
 import torch
 import torchvision
 from torchvision import datasets, transforms
@@ -25,6 +26,10 @@ parser.add_argument("--z_dim", type=int, default=10, help="dimension of z. defau
 args = parser.parse_args()
 
 args.cuda = not args.no_cuda and torch.cuda.is_available()
+if args.cuda:
+    print("cuda in available, use cuda")
+else:
+    print("cuda in not available, use cpu")
 
 model_dir = "./wgan_gp"
 log_dir = os.path.join(args.root, model_dir, "./log")
@@ -181,7 +186,8 @@ def train(epoch):
 
     model_D.train()
     model_G.train()
-    for batch_idx, (data, label) in enumerate(train_loader):
+    loader_bar = tqdm.tqdm(train_loader)
+    for batch_idx, (data, label) in enumerate(loader_bar):
         batch_cnt += 1
         batch_size = data.size(0)
         #real data
