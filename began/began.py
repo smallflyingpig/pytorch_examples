@@ -4,6 +4,7 @@ import argparse
 import os 
 import numpy as np
 import torch
+import tqdm 
 import torchvision
 from torchvision import datasets, transforms
 from torch.autograd import Variable
@@ -170,7 +171,8 @@ def train(epoch):
     param_k = 0
     param_gamma = 1
     param_lambda = 0.0002
-    for batch_idx, (data, label) in enumerate(train_loader):
+    loader_bar = tqdm.tqdm(train_loader)
+    for batch_idx, (data, label) in enumerate(loader_bar):
         batch_cnt += 1
         batch_size = data.size(0)
         #real data
@@ -214,6 +216,7 @@ def train(epoch):
         param_k += (param_lambda*(param_gamma*loss_D_real - loss_G)).item()
         param_k = max(min(param_k, 1),0)
 
+        loader_bar.set_description("==>epoch:{:4d}, loss_D:{:10.5f}, loss_G:{:10.5f}".format(epoch, loss_D.cpu().item(), loss_G.cpu().item()))
         writer.add_scalars(main_tag="loss", tag_scalar_dict={
             "loss_d":loss_D.cpu().item(),
             "loss_g":loss_G.cpu().item(),
@@ -221,9 +224,7 @@ def train(epoch):
             "loss_d_fake":loss_D_fake.cpu().item(),
             "param_k":param_k
         }, global_step=batch_cnt)
-        if batch_idx%100 == 0:
-            print("==>epoch:{:4d}, [{:5d}/{:5d}], loss_D:{:10.5f}, loss_G:{:10.5f}, save idx:{}".format(epoch, batch_idx*len(data), 
-                    len(train_loader.dataset), loss_D.cpu().item(), loss_G.cpu().item(), save_idx))
+        if batch_cnt%100 == 0:    
             #save image
             if not os.path.exists(os.path.join(args.root, model_dir, "./sample/")):
                 os.system("mkdir {}".format(os.path.join(args.root, model_dir, "./sample/")))

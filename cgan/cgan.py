@@ -2,6 +2,7 @@
 
 import argparse
 import os 
+import tqdm 
 import numpy as np
 import torch
 import torchvision
@@ -53,7 +54,6 @@ test_loader = torch.utils.data.DataLoader(
                     ]) ),
     batch_size=args.batch_size, shuffle=True
 )
-
 
 
 class Generator(nn.Module):
@@ -186,7 +186,8 @@ def train(epoch):
 
     model_D.train()
     model_G.train()
-    for batch_idx, (data, label) in enumerate(train_loader):
+    loader_bar = tqdm.tqdm(train_loader)
+    for batch_idx, (data, label) in enumerate(loader_bar):
         batch_cnt += 1
         batch_size = data.size(0)
         #real data
@@ -233,14 +234,13 @@ def train(epoch):
         loss_G = loss_func(pred_G, label_real)
         loss_G.backward()
         optimizer_G.step()
-
+        
+        loader_bar.set_description("==>epoch:{:4d}, loss_D:{:10.5f}, loss_G:{:10.5f}".format(epoch, loss_D.cpu().item(), loss_G.cpu().item()))
         writer.add_scalars(main_tag="loss", tag_scalar_dict={
             "loss_d":loss_D.cpu().item(),
             "loss_g":loss_G.cpu().item()
         }, global_step=batch_cnt)
-        if batch_idx%100 == 0:
-            print("==>epoch:{:4d}, [{:5d}/{:5d}], loss_D:{:10.5f}, loss_G:{:10.5f}, save idx:{}".format(epoch, batch_idx*len(data), 
-                    len(train_loader.dataset), loss_D.cpu().item(), loss_G.cpu().item(), save_idx))
+        if batch_cnt%100 == 0:
             #save image
             if not os.path.exists(os.path.join(args.root, model_dir, "./sample/")):
                 os.system("mkdir {}".format(os.path.join(args.root, model_dir, "./sample/")))
