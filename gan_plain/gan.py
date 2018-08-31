@@ -35,7 +35,7 @@ writer = SummaryWriter(log_dir=log_dir)
  #   torch.cuda.manual_seed(1)
 
 train_loader = torch.utils.data.DataLoader(
-    datasets.MNIST(root=os.path.join(args.root, "../data/mnist"), train=True, download=False, 
+    datasets.MNIST(root=os.path.join(args.root, "../data/mnist"), train=True, download=True, 
                     transform=transforms.Compose([
                     transforms.ToTensor(),
                     transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5,0.5,0.5))
@@ -43,7 +43,7 @@ train_loader = torch.utils.data.DataLoader(
     batch_size=args.batch_size, shuffle=True
 )
 test_loader = torch.utils.data.DataLoader(
-    datasets.MNIST(root=os.path.join(args.root, "../data/mnist"), train=False, download=False,
+    datasets.MNIST(root=os.path.join(args.root, "../data/mnist"), train=False, download=True,
                     transform=transforms.Compose([
                     transforms.ToTensor(),
                     transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5,0.5,0.5))
