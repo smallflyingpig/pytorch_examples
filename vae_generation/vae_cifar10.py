@@ -22,7 +22,9 @@ parser.add_argument("--model", type=str, default="mlp",
 parser.add_argument("--img_size", type=int, default=32, 
                     help="image size the image will resize to, default 32")                    
 parser.add_argument("--KLD_coeff", type=float, default=5, 
-                    help="loss coeff of KLD, default 5")                   
+                    help="loss coeff of KLD, default 5")    
+parser.add_argument("--img_channel", type=int, default=3, 
+                    help="image channel, default 3")                                    
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -41,20 +43,20 @@ if args.cuda:
 
 param = {"num_workers":4, "pin_memory":True} if args.cuda else {}
 train_loader = torch.utils.data.DataLoader(
-    datasets.MNIST(root=args.root + "./data/mnist", train=True, download=False, 
+    datasets.CIFAR10(root=args.root + "./data/cifar10", train=True, download=False, 
                     transform=transforms.Compose([
                     transforms.Resize(size=(args.img_size)),
                     transforms.ToTensor(),
-                    #transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5,0.5,0.5))
+                    transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5,0.5,0.5))
                     ])),
     batch_size=args.batch_size, shuffle=True, **param
 )
 test_loader = torch.utils.data.DataLoader(
-    datasets.MNIST(root=args.root + "./data/mnist", train=False, 
+    datasets.CIFAR10(root=args.root + "./data/cifar10", train=False, 
                     transform=transforms.Compose([
                     transforms.Resize(size=(args.img_size)),
                     transforms.ToTensor(),
-                    #transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5,0.5,0.5))
+                    transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5,0.5,0.5))
                     ])),
     batch_size=args.batch_size, shuffle=True, **param
 )
@@ -96,10 +98,12 @@ class VAE_conv(nn.Module):
             nn.Conv2d(self.img_channel, self.ref_dim, 4,2,1, bias=False),
             nn.BatchNorm2d(self.ref_dim),
             nn.LeakyReLU(0.2, True),
+            ResBlock(self.ref_dim, activate="LeakyReLU"),
             # img_size//2 --> img_size//4
             nn.Conv2d(self.ref_dim, self.ref_dim*2, 4,2,1, bias=False),
             nn.BatchNorm2d(self.ref_dim*2),
             nn.LeakyReLU(0.2, True),
+            ResBlock(self.ref_dim*2, activate="LeakyReLU"),
             # img_size//4 --> img_size//8
             nn.Conv2d(self.ref_dim*2, self.ref_dim*4, 4,2,1, bias=False),
             nn.BatchNorm2d(self.ref_dim*4),
@@ -120,12 +124,14 @@ class VAE_conv(nn.Module):
             nn.ConvTranspose2d(self.ref_dim*4, self.ref_dim*2, 4,2,1, bias=False),
             nn.BatchNorm2d(self.ref_dim*2),
             nn.ReLU(True),
+            ResBlock(self.ref_dim*2, activate="ReLU"),
             # ref_dim*2 x img_size//4 x img_size//4 --> ref_dim*1 x img_size//2 x img_size//2
             nn.ConvTranspose2d(self.ref_dim*2, self.ref_dim*1, 4,2,1, bias=False),
             nn.BatchNorm2d(self.ref_dim*1),
             nn.ReLU(True),
+            ResBlock(self.ref_dim, activate="ReLU"),
             nn.ConvTranspose2d(self.ref_dim, self.img_channel, 4,2,1, bias=True),
-            nn.Sigmoid()
+            nn.Tanh()
         )
 
     def encode(self, input_data):
@@ -146,7 +152,7 @@ class VAE_conv(nn.Module):
 
     def decode(self, z):
         x = self.decoder(z.unsqueeze(2).unsqueeze(3))
-        return x.view(-1, 1, self.img_size[0], self.img_size[1])
+        return x.view(-1, args.img_channel, self.img_size[0], self.img_size[1])
 
     def forward(self, input_data):
         mu, log_var = self.encode(input_data)
@@ -154,56 +160,7 @@ class VAE_conv(nn.Module):
         rec = self.decode(z)
         return rec, mu, log_var
 
-class VAE_mlp(nn.Module):
-    def __init__(self, img_size):
-        super(VAE_mlp, self).__init__()
-        self.hidden_dim = args.hidden_dim
-        self.img_size = img_size
-        self.img_size_flatten = self.img_size[0]*self.img_size[1]
-        self.fc1 = nn.Linear(self.img_size_flatten, 400)
-        self.fc2_mu = nn.Linear(400, self.hidden_dim)
-        self.fc2_log_var = nn.Linear(400, self.hidden_dim)
-
-        self.fc3 = nn.Linear(self.hidden_dim,400)
-        self.fc4 = nn.Linear(400, self.img_size_flatten)
-
-        self.relu = nn.ReLU()
-        self.sigmoid = nn.Sigmoid()
-
-    def encode(self, input_data):
-        x = self.relu(self.fc1(input_data.view(-1, self.img_size_flatten)))
-        mu = self.fc2_mu(x)
-        log_var = self.fc2_log_var(x)
-        return mu, log_var
-
-    def reparameter(self, mu, log_var):
-        if self.training:
-            std = torch.exp(log_var*0.5)
-            eps = Variable(std.data.new(std.size()).normal_())
-            if args.cuda:
-                eps.cuda()
-            return mu + eps.mul(std)
-        else:
-            return mu
-
-    def decode(self, z):
-        x = self.relu(self.fc3(z))
-        x = self.fc4(x)
-        return self.sigmoid(x).view(-1, 1, self.img_size[0], self.img_size[1])
-
-    def forward(self, input_data):
-        mu, log_var = self.encode(input_data)
-        z = self.reparameter(mu, log_var)
-        rec = self.decode(z)
-        return rec, mu, log_var
-
-
-if args.model == "mlp":
-    model = VAE_mlp(img_size=(args.img_size, args.img_size))
-elif args.model == "conv":
-    model = VAE_conv(img_size=(args.img_size, args.img_size))
-else:
-    model = VAE_mlp(img_size=(args.img_size, args.img_size))
+model = VAE_conv(img_size=(args.img_size, args.img_size), img_channel=args.img_channel)
 
 if args.cuda:
     model.cuda()
@@ -217,7 +174,7 @@ def loss_func(input_data, rec, mu, log_var):
     return: loss for VAE
     """
     batch_size = input_data.shape[0]
-    BCE = F.binary_cross_entropy(rec.view(batch_size, -1), input_data.view(batch_size, -1), reduce=False).sum(dim=1).mean()  #why the size_average is False
+    BCE = F.mse_loss(rec.view(batch_size, -1), input_data.view(batch_size, -1), reduce=False).sum(dim=1).mean()  #why the size_average is False
     # -0.5*sum(1+log(sigma^2)-mu^2-sigma^2), how this func is constructed
     # https://stats.stackexchange.com/questions/60680/kl-divergence-between-two-multivariate-gaussians
     KLD = -0.5 * torch.mean(torch.sum(1 + log_var - mu.pow(2) - log_var.exp(), 1))
@@ -275,8 +232,8 @@ def test(epoch):
             if not os.path.exists(rec_dir):
                 os.system("mkdir {}".format(rec_dir))
 
-            torchvision.utils.save_image(tensor=comparision.view(-1,1,args.img_size,args.img_size).data.cpu(), 
-                    filename=os.path.join(rec_dir, "./comparision_{}.png".format(epoch)), normalize=True, range=(0,1), nrow=8)
+            torchvision.utils.save_image(tensor=comparision.view(-1,args.img_channel, args.img_size,args.img_size).data.cpu(), 
+                    filename=os.path.join(rec_dir, "./comparision_{}.png".format(epoch)), normalize=True, range=(-1,1), nrow=8)
 
     print("[{:5s}] epoch:{:5d}, loss:{:10.5f}".format("test", epoch, test_loss/len(test_loader)))
 
@@ -297,5 +254,5 @@ if __name__ == "__main__":
                 os.system("mkdir {}".format(rec_dir))
                 
         torchvision.utils.save_image(tensor=gene_sampler.data.cpu(), 
-                filename=os.path.join(rec_dir, "./gene_sampler_{}.png".format(epoch)), normalize=True, range=(0,1), nrow=8)
+                filename=os.path.join(rec_dir, "./gene_sampler_{}.png".format(epoch)), normalize=True, range=(-1,1), nrow=8)
         

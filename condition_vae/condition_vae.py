@@ -1,5 +1,6 @@
 import argparse
 import os
+import numpy as np
 import tqdm
 import torch
 import torch.nn as nn
@@ -22,12 +23,16 @@ parser.add_argument("--model", type=str, default="mlp",
 parser.add_argument("--img_size", type=int, default=32, 
                     help="image size the image will resize to, default 32")                    
 parser.add_argument("--KLD_coeff", type=float, default=5, 
-                    help="loss coeff of KLD, default 5")                   
+                    help="loss coeff of KLD, default 5")  
+parser.add_argument("--class_num", type=int, default=10, 
+                    help="class number of the data, default 10")      
+parser.add_argument("--condition_dim", type=int, default=10, 
+                    help="condition dim to concate to the noie, default 10")                                                          
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
-model_dir = "vae_generation"
+model_dir = "condition_vae"
 rec_dir = os.path.join(args.root, model_dir, "./rec")
 
 if args.cuda:
@@ -41,16 +46,17 @@ if args.cuda:
 
 param = {"num_workers":4, "pin_memory":True} if args.cuda else {}
 train_loader = torch.utils.data.DataLoader(
-    datasets.MNIST(root=args.root + "./data/mnist", train=True, download=False, 
+    datasets.MNIST(root=args.root + "../data/mnist", train=True, download=False, 
                     transform=transforms.Compose([
                     transforms.Resize(size=(args.img_size)),
                     transforms.ToTensor(),
                     #transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5,0.5,0.5))
-                    ])),
+                    ]), 
+    ),
     batch_size=args.batch_size, shuffle=True, **param
 )
 test_loader = torch.utils.data.DataLoader(
-    datasets.MNIST(root=args.root + "./data/mnist", train=False, 
+    datasets.MNIST(root=args.root + "../data/mnist", train=False, 
                     transform=transforms.Compose([
                     transforms.Resize(size=(args.img_size)),
                     transforms.ToTensor(),
@@ -59,34 +65,11 @@ test_loader = torch.utils.data.DataLoader(
     batch_size=args.batch_size, shuffle=True, **param
 )
 
-
-class ResBlock(nn.Module):
-    def __init__(self, channel, activate="ReLU"):
-        super(ResBlock, self).__init__()
-        self.channel = channel
-        self.block = nn.Sequential(
-            nn.Conv2d(self.channel, self.channel//4, 1, 1, 0, bias=False),
-            nn.BatchNorm2d(self.channel//4),
-            nn.ReLU(True),
-            nn.Conv2d(self.channel//4, self.channel//4, 3, 1, 1, bias=False),
-            nn.BatchNorm2d(self.channel//4),
-            nn.ReLU(True),
-            nn.Conv2d(self.channel//4, self.channel, 3, 1, 1, bias=False),
-            nn.BatchNorm2d(self.channel),
-        )
-        if activate=="ReLU":
-            self.activate = nn.ReLU(True)
-        else:
-            self.activate = nn.LeakyReLU(0.2, True)
-
-    def forward(self, x):
-        residual = self.block(x)
-        return self.activate(x+residual)
-
 class VAE_conv(nn.Module):
-    def __init__(self, img_size, img_channel=1):
+    def __init__(self, img_size, img_channel=1, condition_dim=10):
         super(VAE_conv, self).__init__()
         self.hidden_dim = args.hidden_dim
+        self.condition_dim = condition_dim
         self.img_size = img_size
         self.img_channel = img_channel
         self.ref_dim = 32
@@ -104,7 +87,6 @@ class VAE_conv(nn.Module):
             nn.Conv2d(self.ref_dim*2, self.ref_dim*4, 4,2,1, bias=False),
             nn.BatchNorm2d(self.ref_dim*4),
             nn.LeakyReLU(0.2, True),
-            ResBlock(self.ref_dim*4, activate="LeakyReLU")
         )
         self.project_dim = self.ref_dim*4 * self.img_size[0]//8 * self.img_size[1]//8
         self.project_layer = nn.Sequential(
@@ -112,10 +94,9 @@ class VAE_conv(nn.Module):
         )
         self.decoder = nn.Sequential(
             # hidden_dim x 1 x 1 --> ref_dim*4 x img_size//8 x img_size//8
-            nn.ConvTranspose2d(self.hidden_dim, self.ref_dim*4, self.img_size[0]//8,1,0, bias=False),
+            nn.ConvTranspose2d(self.hidden_dim+self.condition_dim, self.ref_dim*4, self.img_size[0]//8,1,0, bias=False),
             nn.BatchNorm2d(self.ref_dim*4),
             nn.ReLU(True),
-            ResBlock(self.ref_dim*4, activate="ReLU"),
             # ref_dim*4 x img_size//8 x img_size//8 --> ref_dim*2 x img_size//4 x img_size//4
             nn.ConvTranspose2d(self.ref_dim*4, self.ref_dim*2, 4,2,1, bias=False),
             nn.BatchNorm2d(self.ref_dim*2),
@@ -144,27 +125,31 @@ class VAE_conv(nn.Module):
         else:
             return mu
 
-    def decode(self, z):
-        x = self.decoder(z.unsqueeze(2).unsqueeze(3))
+    def decode(self, z, c):
+        z_c = torch.cat([z,c],1)
+        x = self.decoder(z_c.unsqueeze(2).unsqueeze(3))
         return x.view(-1, 1, self.img_size[0], self.img_size[1])
 
-    def forward(self, input_data):
+    def forward(self, input_data, condition):
         mu, log_var = self.encode(input_data)
         z = self.reparameter(mu, log_var)
-        rec = self.decode(z)
+        rec = self.decode(z, condition)
         return rec, mu, log_var
 
+
 class VAE_mlp(nn.Module):
-    def __init__(self, img_size):
+    def __init__(self, img_size, condition_dim=10):
         super(VAE_mlp, self).__init__()
         self.hidden_dim = args.hidden_dim
+        self.condition_dim = condition_dim
         self.img_size = img_size
         self.img_size_flatten = self.img_size[0]*self.img_size[1]
         self.fc1 = nn.Linear(self.img_size_flatten, 400)
         self.fc2_mu = nn.Linear(400, self.hidden_dim)
         self.fc2_log_var = nn.Linear(400, self.hidden_dim)
 
-        self.fc3 = nn.Linear(self.hidden_dim,400)
+        # for decoder
+        self.fc3 = nn.Linear(self.hidden_dim+self.condition_dim,400)
         self.fc4 = nn.Linear(400, self.img_size_flatten)
 
         self.relu = nn.ReLU()
@@ -186,24 +171,25 @@ class VAE_mlp(nn.Module):
         else:
             return mu
 
-    def decode(self, z):
-        x = self.relu(self.fc3(z))
+    def decode(self, z, c):
+        z_c = torch.cat([z, c], 1)
+        x = self.relu(self.fc3(z_c))
         x = self.fc4(x)
         return self.sigmoid(x).view(-1, 1, self.img_size[0], self.img_size[1])
 
-    def forward(self, input_data):
+    def forward(self, input_data, condition):
         mu, log_var = self.encode(input_data)
         z = self.reparameter(mu, log_var)
-        rec = self.decode(z)
+        rec = self.decode(z, condition)
         return rec, mu, log_var
 
 
 if args.model == "mlp":
-    model = VAE_mlp(img_size=(args.img_size, args.img_size))
+    model = VAE_mlp(img_size=(args.img_size, args.img_size), condition_dim=args.condition_dim)
 elif args.model == "conv":
-    model = VAE_conv(img_size=(args.img_size, args.img_size))
+    model = VAE_conv(img_size=(args.img_size, args.img_size), condition_dim=args.condition_dim)
 else:
-    model = VAE_mlp(img_size=(args.img_size, args.img_size))
+    model = VAE_mlp(img_size=(args.img_size, args.img_size), condition_dim=args.condition_dim)
 
 if args.cuda:
     model.cuda()
@@ -228,11 +214,15 @@ def train(epoch):
     train_loss = 0
     loader_bar = tqdm.tqdm(train_loader)
     for batch_idx, (data, label) in enumerate(loader_bar):
+        batch_size = data.shape[0]
         data = data.requires_grad_(True)
-        if args.cuda:
-            data = data.cuda()
+        
+        condition = torch.eye(args.class_num)[label].reshape(batch_size, args.class_num)
 
-        data_rec, mu, log_var = model.forward(data)
+        if args.cuda:
+            data, label, condition = data.cuda(), label.cuda(), condition.cuda()
+        
+        data_rec, mu, log_var = model.forward(data, condition)
         loss_BCE, loss_KLD = loss_func(input_data=data.detach().requires_grad_(False), rec=data_rec, mu=mu, log_var=log_var)
         loss = loss_BCE + args.KLD_coeff*loss_KLD
 
@@ -255,11 +245,13 @@ def test(epoch):
     test_loss = 0
     loader_bar = tqdm.tqdm(test_loader)
     for batch_idx, (data, label) in enumerate(loader_bar):
+        batch_size = data.shape[0]
         data = data.requires_grad_(False)
+        condition = torch.eye(args.class_num)[label].reshape(batch_size, args.class_num)
         if args.cuda:
-            data = data.cuda()
+            data, condition = data.cuda(), condition.cuda()
 
-        data_rec, mu, log_var = model(data)
+        data_rec, mu, log_var = model(data, condition)
         loss_BCE, loss_KLD = loss_func(data, data_rec, mu, log_var)
         loss = loss_BCE + args.KLD_coeff*loss_KLD
 
@@ -281,21 +273,29 @@ def test(epoch):
     print("[{:5s}] epoch:{:5d}, loss:{:10.5f}".format("test", epoch, test_loss/len(test_loader)))
 
 
+def sample(epoch):
+    condition_idx = np.array(list(range(args.class_num*args.class_num)))
+    condition_idx = condition_idx%args.class_num
+    condition = np.eye(args.class_num)[condition_idx.astype(np.int32)]
+    condition = torch.Tensor(condition)
+    sampler = torch.randn(condition.shape[0], args.hidden_dim)
+    sampler = sampler.requires_grad_(False)
+    if args.cuda:
+        sampler, condition = sampler.cuda(), condition.cuda()
+
+    gene_sampler = model.decode(sampler, condition)
+    
+    if not os.path.exists(rec_dir):
+            os.system("mkdir {}".format(rec_dir))
+            
+    torchvision.utils.save_image(tensor=gene_sampler.data.cpu(), 
+            filename=os.path.join(rec_dir, "./gene_sampler_{}.png".format(epoch)), normalize=True, range=(0,1), nrow=args.class_num)
+
 
 if __name__ == "__main__":
     for epoch in range(args.epoches):
         train(epoch)
         test(epoch)
-        #sample
-        sampler = torch.randn(64, args.hidden_dim)
-        sampler = sampler.requires_grad_(False)
-        if args.cuda:
-            sampler = sampler.cuda()
-        gene_sampler = model.decode(sampler)
+        sample(epoch)
         
-        if not os.path.exists(rec_dir):
-                os.system("mkdir {}".format(rec_dir))
-                
-        torchvision.utils.save_image(tensor=gene_sampler.data.cpu(), 
-                filename=os.path.join(rec_dir, "./gene_sampler_{}.png".format(epoch)), normalize=True, range=(0,1), nrow=8)
         

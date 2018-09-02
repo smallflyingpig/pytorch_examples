@@ -6,7 +6,10 @@ import torch.nn as nn
 from torch.autograd import Variable
 import torch.nn.functional as F 
 import torchvision
+import torchvision.utils as vutils
 from torchvision import datasets, transforms
+from tensorboardX import SummaryWriter
+import time
 
 
 parser = argparse.ArgumentParser(description="VAE mnist examples")
@@ -29,6 +32,18 @@ args.cuda = not args.no_cuda and torch.cuda.is_available()
 
 model_dir = "vae_generation"
 rec_dir = os.path.join(args.root, model_dir, "./rec")
+if not os.path.exists(rec_dir):
+    os.mkdir(rec_dir)
+
+log_dir = os.path.join(args.root, model_dir, "./log")
+if not os.path.exists(log_dir):
+    os.mkdir(log_dir)
+
+time_now = time.strftime("%Y_%m_%d_%H_%M_%S", time.localtime())
+log_dir_cur = os.path.join(log_dir, time_now)
+os.mkdir(log_dir_cur)
+
+writer = SummaryWriter(log_dir_cur)
 
 if args.cuda:
     print("cuda in available, use cuda")
@@ -45,7 +60,7 @@ train_loader = torch.utils.data.DataLoader(
                     transform=transforms.Compose([
                     transforms.Resize(size=(args.img_size)),
                     transforms.ToTensor(),
-                    #transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5,0.5,0.5))
+                    transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5,0.5,0.5))
                     ])),
     batch_size=args.batch_size, shuffle=True, **param
 )
@@ -54,7 +69,7 @@ test_loader = torch.utils.data.DataLoader(
                     transform=transforms.Compose([
                     transforms.Resize(size=(args.img_size)),
                     transforms.ToTensor(),
-                    #transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5,0.5,0.5))
+                    transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5,0.5,0.5))
                     ])),
     batch_size=args.batch_size, shuffle=True, **param
 )
@@ -125,7 +140,7 @@ class VAE_conv(nn.Module):
             nn.BatchNorm2d(self.ref_dim*1),
             nn.ReLU(True),
             nn.ConvTranspose2d(self.ref_dim, self.img_channel, 4,2,1, bias=True),
-            nn.Sigmoid()
+            nn.Tanh()
         )
 
     def encode(self, input_data):
@@ -168,7 +183,7 @@ class VAE_mlp(nn.Module):
         self.fc4 = nn.Linear(400, self.img_size_flatten)
 
         self.relu = nn.ReLU()
-        self.sigmoid = nn.Sigmoid()
+        self.activate = nn.Tanh()
 
     def encode(self, input_data):
         x = self.relu(self.fc1(input_data.view(-1, self.img_size_flatten)))
@@ -189,7 +204,7 @@ class VAE_mlp(nn.Module):
     def decode(self, z):
         x = self.relu(self.fc3(z))
         x = self.fc4(x)
-        return self.sigmoid(x).view(-1, 1, self.img_size[0], self.img_size[1])
+        return self.activate(x).view(-1, 1, self.img_size[0], self.img_size[1])
 
     def forward(self, input_data):
         mu, log_var = self.encode(input_data)
@@ -198,60 +213,154 @@ class VAE_mlp(nn.Module):
         return rec, mu, log_var
 
 
+
+class Discriminator(nn.Module):
+    """
+    discriminator for GAN
+    """
+    def __init__(self, img_size, img_channel=1):
+        super(Discriminator, self).__init__()
+        self.img_size = img_size 
+        self.img_channel = img_channel
+        self.ref_dim = 32
+        self.net = nn.Sequential(
+            # img_size --> img_size//2
+            nn.Conv2d(self.img_channel, self.ref_dim, 4,2,1, bias=False),
+            nn.BatchNorm2d(self.ref_dim),
+            nn.LeakyReLU(0.2, True),
+            # img_size//2 --> img_size//4
+            nn.Conv2d(self.ref_dim, self.ref_dim*2, 4,2,1, bias=False),
+            nn.BatchNorm2d(self.ref_dim*2),
+            nn.LeakyReLU(0.2, True),
+            # img_size//4 --> img_size//8
+            nn.Conv2d(self.ref_dim*2, self.ref_dim*4, 4,2,1, bias=False),
+            nn.BatchNorm2d(self.ref_dim*4),
+            nn.LeakyReLU(0.2, True),
+            ResBlock(self.ref_dim*4, activate="LeakyReLU")
+        )
+        self.output = nn.Sequential(
+            nn.Conv2d(self.ref_dim*4, 1, self.img_size[0]//8, 1, 0),
+            nn.Sigmoid()
+        )
+
+
+    def forward(self, z):
+        """
+        input: z (batch_size x 1 x img_size[0] x img_size[1])
+        output: pred (batch_size x 1)
+        """
+        x_feature = self.net(z)
+        x = self.output(x_feature)
+        return x.squeeze()
+
+
 if args.model == "mlp":
-    model = VAE_mlp(img_size=(args.img_size, args.img_size))
+    model_VAE = VAE_mlp(img_size=(args.img_size, args.img_size))
 elif args.model == "conv":
-    model = VAE_conv(img_size=(args.img_size, args.img_size))
+    model_VAE = VAE_conv(img_size=(args.img_size, args.img_size))
 else:
-    model = VAE_mlp(img_size=(args.img_size, args.img_size))
+    model_VAE = VAE_mlp(img_size=(args.img_size, args.img_size))
 
+model_D = Discriminator(img_size=(args.img_size, args.img_size))
 if args.cuda:
-    model.cuda()
+    model_VAE.cuda()
+    model_D.cuda()
 
-optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+optimizer_VAE = torch.optim.Adam(model_VAE.parameters(), lr=args.lr)
+optimizer_D = torch.optim.Adam(model_D.parameters(), lr=args.lr)
 
-def loss_func(input_data, rec, mu, log_var):
+
+def loss_func_BCE(input, target):
+    error = F.binary_cross_entropy(input, target)
+    return error
+
+
+def loss_func(data_rec, data):
+    batch_size = data.shape[0]
+    #error = F.binary_cross_entropy(data_rec.view(batch_size, -1), data.view(batch_size, -1), reduce=False).sum(dim=1).mean()
+    error = F.mse_loss(data_rec.view(batch_size, -1), data.view(batch_size, -1), reduce=False).sum(dim=1).mean()
+    return error
+
+def loss_func_KLD(mu, log_var):
     """
     loss function for VAE
     input: x, rec_x, mu, log_var
     return: loss for VAE
     """
-    batch_size = input_data.shape[0]
-    BCE = F.binary_cross_entropy(rec.view(batch_size, -1), input_data.view(batch_size, -1), reduce=False).sum(dim=1).mean()  #why the size_average is False
+    batch_size = mu.shape[0]
+    #BCE = F.binary_cross_entropy(rec.view(batch_size, -1), input_data.view(batch_size, -1), reduce=False).sum(dim=1).mean()  #why the size_average is False
     # -0.5*sum(1+log(sigma^2)-mu^2-sigma^2), how this func is constructed
     # https://stats.stackexchange.com/questions/60680/kl-divergence-between-two-multivariate-gaussians
     KLD = -0.5 * torch.mean(torch.sum(1 + log_var - mu.pow(2) - log_var.exp(), 1))
-    return BCE, KLD
+    return KLD
 
+batch_cnt = 0
 def train(epoch):
-    model.train()
-    train_loss = 0
+    global batch_cnt
+    model_VAE.train()
+    model_D.train()
+    train_loss_D = 0
+    train_loss_VAE = 0
     loader_bar = tqdm.tqdm(train_loader)
     for batch_idx, (data, label) in enumerate(loader_bar):
+        batch_cnt += 1
+        batch_size = data.shape[0]
         data = data.requires_grad_(True)
+        label_real = torch.ones(batch_size)
+        label_fake = torch.zeros(batch_size)
         if args.cuda:
-            data = data.cuda()
+            data, label_real, label_fake = data.cuda(), label_real.cuda(), label_fake.cuda()
 
-        data_rec, mu, log_var = model.forward(data)
-        loss_BCE, loss_KLD = loss_func(input_data=data.detach().requires_grad_(False), rec=data_rec, mu=mu, log_var=log_var)
-        loss = loss_BCE + args.KLD_coeff*loss_KLD
+        # update D
+        data_rec, mu, log_var = model_VAE.forward(data)
+        pred_real, pred_fake = model_D(data), model_D(data_rec.detach())
+        loss_D_real, loss_D_fake = loss_func_BCE(pred_real, label_real), loss_func_BCE(pred_fake, label_fake)
+        loss_D = loss_D_real + loss_D_fake
+        model_D.zero_grad()
+        loss_D.backward()
+        optimizer_D.step()
 
-        model.zero_grad()
-        loss.backward()
-        
-        optimizer.step()
+        #update VAE
+        pred_fake = model_D(data_rec)
+        loss_VAE_KLD = loss_func_KLD(mu=mu, log_var=log_var)
+        loss_VAE_BCE_fake = loss_func_BCE(pred_fake, label_real)
+        loss_VAE_BCE = loss_func(data_rec, data.detach().requires_grad_(False))
+        loss_VAE = loss_VAE_BCE_fake + args.KLD_coeff*loss_VAE_KLD + loss_VAE_BCE
+        model_VAE.zero_grad()
+        loss_VAE.backward()
+        optimizer_VAE.step()
 
-        train_loss += loss.cpu().item()
-        loader_bar.set_description("[{:5s}] epoch:{:5d}, loss:{:10.5f}[{:10.5f},{:10.5f}]".format("train", epoch, 
-            loss.cpu().item(), loss_BCE.cpu().item(), loss_KLD.cpu().item()
+        train_loss_D += loss_D.cpu().item()
+        train_loss_VAE += loss_VAE.cpu().item()
+
+        loader_bar.set_description("[{:5s}] epoch:{:5d}, loss D:{:6.4f}[{:6.4f},{:6.4f}], loss VAE:{:6.4}[{:6.4f},{:6.4f}]".format("train", epoch, 
+            loss_D.cpu().item(), loss_D_real.cpu().item(), loss_D_fake.cpu().item(),
+            loss_VAE.cpu().item(), loss_VAE_BCE_fake.cpu().item(), loss_VAE_KLD.cpu().item()
             ))
+        writer.add_scalars(main_tag="loss_d", tag_scalar_dict={
+            "loss_d_real":loss_D_real.cpu().item(),
+            "loss_d_fake":loss_D_fake.cpu().item()
+        }, global_step=batch_cnt)
+        writer.add_scalars(main_tag="loss_g", tag_scalar_dict={
+            "loss_g_BCE": loss_VAE_BCE.cpu().item(),
+            "loss_g_fake":loss_VAE_BCE_fake.cpu().item(),
+            "loss_g_KLD": loss_VAE_KLD.cpu().item()
+        }, global_step=batch_cnt)
+        if batch_idx == 0:
+            writer.add_image(tag="image_fake", img_tensor=vutils.make_grid(data_rec, normalize=True, range=(-1,1)))
+            writer.add_image(tag="image_real", img_tensor=vutils.make_grid(data, normalize=True, range=(-1,1)))
+
+
+        
             
-    print("[{:5s}] epoch:{:5d}, loss:{:10.5f}".format("train", epoch, train_loss/(len(train_loader))))
+    print("[{:5s}] epoch:{:5d}, loss D:{:6.4f}, loss VAE:{:6.4f}".format(
+        "train", epoch, train_loss_VAE/(len(train_loader)), train_loss_D/(len(train_loader))
+        ))
 
 
 
 def test(epoch):
-    model.eval()
+    model_VAE.eval()
     test_loss = 0
     loader_bar = tqdm.tqdm(test_loader)
     for batch_idx, (data, label) in enumerate(loader_bar):
@@ -259,43 +368,37 @@ def test(epoch):
         if args.cuda:
             data = data.cuda()
 
-        data_rec, mu, log_var = model(data)
-        loss_BCE, loss_KLD = loss_func(data, data_rec, mu, log_var)
-        loss = loss_BCE + args.KLD_coeff*loss_KLD
-
-        test_loss += loss.cpu().item()
-        
-        loader_bar.set_description("[{:5s}] epoch:{:5d}, loss:{:10.5f}[{:10.5f},{:10.5f}]".format("test", epoch, 
-            loss.cpu().item(), loss_BCE.cpu().item(), loss_KLD.cpu().item()
-            ))
-
+        data_rec, mu, log_var = model_VAE(data)
+       
+        loader_bar.set_description("[{:5s}] epoch:{:5d}".format("test", epoch))
         if batch_idx == 0:
             n = min(8, args.batch_size)
             comparision = torch.cat([data[:n], data_rec.view_as(data)[:n]])
-            if not os.path.exists(rec_dir):
-                os.system("mkdir {}".format(rec_dir))
-
             torchvision.utils.save_image(tensor=comparision.view(-1,1,args.img_size,args.img_size).data.cpu(), 
-                    filename=os.path.join(rec_dir, "./comparision_{}.png".format(epoch)), normalize=True, range=(0,1), nrow=8)
+                    filename=os.path.join(rec_dir, "./comparision_{}.png".format(epoch)), normalize=True, range=(-1,1), nrow=8)
 
-    print("[{:5s}] epoch:{:5d}, loss:{:10.5f}".format("test", epoch, test_loss/len(test_loader)))
 
+
+
+def sample(epoch):
+    model_VAE.eval()
+    #sample
+    sampler = torch.randn(64, args.hidden_dim)
+    sampler = sampler.requires_grad_(False)
+    if args.cuda:
+        sampler = sampler.cuda()
+    gene_sampler = model_VAE.decode(sampler)
+    
+    if not os.path.exists(rec_dir):
+            os.system("mkdir {}".format(rec_dir))
+            
+    torchvision.utils.save_image(tensor=gene_sampler.data.cpu(), 
+            filename=os.path.join(rec_dir, "./gene_sampler_{}.png".format(epoch)), normalize=True, range=(-1,1), nrow=8)
+        
 
 
 if __name__ == "__main__":
     for epoch in range(args.epoches):
         train(epoch)
-        test(epoch)
-        #sample
-        sampler = torch.randn(64, args.hidden_dim)
-        sampler = sampler.requires_grad_(False)
-        if args.cuda:
-            sampler = sampler.cuda()
-        gene_sampler = model.decode(sampler)
-        
-        if not os.path.exists(rec_dir):
-                os.system("mkdir {}".format(rec_dir))
-                
-        torchvision.utils.save_image(tensor=gene_sampler.data.cpu(), 
-                filename=os.path.join(rec_dir, "./gene_sampler_{}.png".format(epoch)), normalize=True, range=(0,1), nrow=8)
+        sample(epoch)
         
