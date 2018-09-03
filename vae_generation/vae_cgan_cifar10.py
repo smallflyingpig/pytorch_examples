@@ -21,12 +21,14 @@ parser.add_argument("--hidden_dim", type=int, default=20, help="dimension of enc
 parser.add_argument("--noise_dim", type=int, default=10, help="noise dim of generator.(default 10)")
 parser.add_argument("--root", type=str, default="/home/jiguo/pytorch_examples", 
                     help="root path for 'pytorch_examples', default '/home/jiguo/pytorch_examples'")
+parser.add_argument("--model", type=str, default="mlp", 
+                    help="model type for VAE encoder and decoder, mlp or conv, decault mlp")
 parser.add_argument("--img_size", type=int, default=32, 
                     help="image size the image will resize to, default 32")                    
 parser.add_argument("--KLD_coeff", type=float, default=5, 
-                    help="loss coeff of KLD, default 5")      
-                                       
-
+                    help="loss coeff of KLD, default 5")   
+parser.add_argument("--img_channel", type=int, default=3, 
+                    help="image channel for data set, default 3 for cifar")                                     
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -57,20 +59,20 @@ if args.cuda:
 
 param = {"num_workers":4, "pin_memory":True} if args.cuda else {}
 train_loader = torch.utils.data.DataLoader(
-    datasets.MNIST(root=args.root + "./data/mnist", train=True, download=False, 
+    datasets.CIFAR10(root=args.root + "./data/cifar10", train=True, download=False, 
                     transform=transforms.Compose([
                     transforms.Resize(size=(args.img_size)),
                     transforms.ToTensor(),
-                    #transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5,0.5,0.5))
+                    transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5,0.5,0.5))
                     ])),
     batch_size=args.batch_size, shuffle=True, **param
 )
 test_loader = torch.utils.data.DataLoader(
-    datasets.MNIST(root=args.root + "./data/mnist", train=False, 
+    datasets.CIFAR10(root=args.root + "./data/cifar10", train=False, 
                     transform=transforms.Compose([
                     transforms.Resize(size=(args.img_size)),
                     transforms.ToTensor(),
-                    #transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5,0.5,0.5))
+                    transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5,0.5,0.5))
                     ])),
     batch_size=args.batch_size, shuffle=True, **param
 )
@@ -139,7 +141,7 @@ class VAE_conv(nn.Module):
             nn.BatchNorm2d(self.ref_dim*1),
             nn.ReLU(True),
             nn.ConvTranspose2d(self.ref_dim, self.img_channel, 4,2,1, bias=True),
-            nn.Sigmoid()
+            nn.Tanh()
         )
 
     def encode(self, input_data):
@@ -160,7 +162,7 @@ class VAE_conv(nn.Module):
 
     def decode(self, z):
         x = self.decoder(z.unsqueeze(2).unsqueeze(3))
-        return x.view(-1, 1, self.img_size[0], self.img_size[1])
+        return x.view(-1, self.img_channel, self.img_size[0], self.img_size[1])
 
     def forward(self, input_data):
         mu, log_var = self.encode(input_data)
@@ -172,12 +174,12 @@ class Generator(nn.Module):
     """
     generator for GAN
     """
-    def __init__(self, noise_dim=10, condition_dim=1, condition_size=(28,28), channel=1):
+    def __init__(self, noise_dim=10, condition_dim=1, condition_size=(28,28), img_channel=1):
         super(Generator, self).__init__()
         self.noise_dim = noise_dim
         self.condition_dim = condition_dim
         self.condition_size = condition_size
-        self.channel = channel
+        self.img_channel = img_channel
         self.ref_dim = 128
 
         self.G = nn.Sequential(
@@ -195,11 +197,11 @@ class Generator(nn.Module):
             nn.ReLU(True)
         )
         self.net = nn.Sequential(
-            nn.Conv2d(self.ref_dim+self.condition_dim, self.ref_dim, 3,1,1, bias=False),
+            nn.Conv2d(self.ref_dim+self.condition_dim*self.img_channel, self.ref_dim, 3,1,1, bias=False),
             nn.BatchNorm2d(self.ref_dim),
             nn.ReLU(True),
             ResBlock(self.ref_dim, activate="ReLU"),
-            nn.Conv2d(self.ref_dim, self.channel, 3,1,1, bias=True),
+            nn.Conv2d(self.ref_dim, self.img_channel, 3,1,1, bias=True),
         )
         self.output = nn.Tanh()
     
@@ -224,7 +226,7 @@ class Discriminator(nn.Module):
         self.ref_dim = 32
         self.net = nn.Sequential(
             # img_size --> img_size//2
-            nn.Conv2d(self.img_channel+self.condition_dim, self.ref_dim, 4,2,1, bias=False),
+            nn.Conv2d(self.img_channel+self.condition_dim*self.img_channel, self.ref_dim, 4,2,1, bias=False),
             nn.BatchNorm2d(self.ref_dim),
             nn.LeakyReLU(0.2, True),
             # img_size//2 --> img_size//4
@@ -254,10 +256,10 @@ class Discriminator(nn.Module):
         return x.squeeze()
 
 
-model_VAE = VAE_conv(img_size=(args.img_size, args.img_size))
+model_VAE = VAE_conv(img_size=(args.img_size, args.img_size), img_channel=args.img_channel)
 
-model_D = Discriminator(img_size=(args.img_size, args.img_size))
-model_G = Generator(noise_dim=args.noise_dim, condition_size=(args.img_size, args.img_size))
+model_D = Discriminator(img_size=(args.img_size, args.img_size), img_channel=args.img_channel)
+model_G = Generator(noise_dim=args.noise_dim, condition_size=(args.img_size, args.img_size), img_channel=args.img_channel)
 if args.cuda:
     model_VAE.cuda()
     model_D.cuda()
@@ -273,9 +275,9 @@ def loss_func_BCE(input, target):
 
 
 def loss_func(data_rec, data):
-    batch_size = data.shape[0]
-    BCE = F.binary_cross_entropy(data_rec.view(batch_size, -1), data.view(batch_size, -1), reduce=False).sum(dim=1).mean()
-    return BCE
+    batch_size, channel = data.shape[0], data.shape[1]
+    error = F.mse_loss(data_rec.view(batch_size, -1), data.view(batch_size, -1), reduce=False).sum()/(batch_size*channel)
+    return error
 
 def loss_func_KLD(mu, log_var):
     """
@@ -313,9 +315,9 @@ def train(epoch):
 
         # update D
         data_rec, mu, log_var = model_VAE.forward(data)
-        condition = data_rec.detach().sub(0.5).div(0.5)
+        condition = data_rec.detach()
         data_fake = model_G.forward(noise_G, condition)
-        pred_real, pred_fake = model_D(data.sub(0.5).div(0.5), condition), model_D(data_fake.detach(), condition)
+        pred_real, pred_fake = model_D(data, condition), model_D(data_fake.detach(), condition)
         loss_D_real, loss_D_fake = loss_func_BCE(pred_real, label_real), loss_func_BCE(pred_fake, label_fake)
         loss_D = loss_D_real + loss_D_fake
 
@@ -369,15 +371,15 @@ def train(epoch):
             "loss_g_fake":loss_G_fake.cpu().item()
         }, global_step=batch_cnt)
         if batch_idx == 0:
-            writer.add_image(tag="image_rec", img_tensor=vutils.make_grid(data_rec, normalize=True, range=(0,1)))
+            writer.add_image(tag="image_rec", img_tensor=vutils.make_grid(data_rec, normalize=True, range=(-1,1)))
             writer.add_image(tag="image_fake", img_tensor=vutils.make_grid(data_fake, normalize=True, range=(-1,1)))
-            writer.add_image(tag="image_real", img_tensor=vutils.make_grid(data, normalize=True, range=(0,1)))
+            writer.add_image(tag="image_real", img_tensor=vutils.make_grid(data, normalize=True, range=(-1,1)))
 
 
         
             
     print("[{:5s}] epoch:{:5d}, loss D:{:6.4f}, loss VAE:{:6.4f}".format(
-        "train", epoch, train_loss_VAE/(len(train_loader)), train_loss_D/(len(train_loader))
+        "train", epoch, train_loss_D/(len(train_loader)), train_loss_VAE/(len(train_loader))
         ))
 
 
@@ -394,7 +396,7 @@ def sample(epoch):
         sampler, noise = sampler.cuda(), noise.cuda()
     gene_sampler = model_VAE.decode(sampler)
     
-    gene_sampler = model_G.forward(noise, gene_sampler.sub(0.5).div(0.5))
+    gene_sampler = model_G.forward(noise, gene_sampler)
     
     if not os.path.exists(rec_dir):
             os.system("mkdir {}".format(rec_dir))
