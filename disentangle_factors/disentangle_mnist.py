@@ -1,3 +1,5 @@
+#reference: Mathieu, Michael F., et al. "Disentangling factors of variation in deep representation using adversarial training." NIPS 2016.
+
 import os
 import sys
 import argparse
@@ -27,9 +29,10 @@ parser.add_argument("--data_root", type=str, default="../data/mnist", help="data
 parser.add_argument("--s_dim", type=int, default=16, help="dim for specified factors")
 parser.add_argument("--z_dim", type=int, default=16, help="dim for unspecified factors")
 parser.add_argument("--class_num", type=int, default=10, help="class num for the dataset, 10 for mnist")
-parser.add_argument("--lr_G", type=float, default=1e-3, help="learning rate")
-parser.add_argument("--lr_D", type=float, default=1e-4, help="learning rate")
+parser.add_argument("--lr_G", type=float, default=1e-3, help="learning rate for Generator")
+parser.add_argument("--lr_D", type=float, default=1e-4, help="learning rate for discriminator")
 parser.add_argument("--epoch", type=int, default=100, help="total epoch")
+parser.add_argument("--base_dim", type=int, default=16, help="base dim for the network")
 
 args, _ = parser.parse_known_args()
 
@@ -94,7 +97,7 @@ class DisentangleNet(nn.Module):
         self.z_dim = z_dim
         self.input_size = input_size
         self.input_channel = input_channel
-        self.base_dim = 16
+        self.base_dim = args.base_dim
         self.enc = nn.Sequential(
             # (1,28,28)
             ConvLayer2d(self.input_channel, self.base_dim),
@@ -198,7 +201,7 @@ class ConditionGAN(nn.Module):
         self.input_channel = input_channel
         self.input_size = input_size
         self.condition_dim = condition_dim
-        self.base_dim = 16
+        self.base_dim = args.base_dim
         self.enc = nn.Sequential(
             # (1,28,28)
             ConvLayer2d(self.input_channel, self.base_dim),
@@ -242,6 +245,8 @@ class ConditionGAN(nn.Module):
         x_c = torch.cat([x, c.unsqueeze(-1).unsqueeze(-1).repeat(1,1,4,4)], dim=1)
         pred = self.out_layer(self.logit_layer(x_c).squeeze())
         return pred.squeeze()
+
+
 
 
 def loss_func_KLD(mu, log_var):
@@ -382,7 +387,7 @@ def test(model_disentangle, dataloader, epoch):
         images, targets = images.cuda(), targets.cuda()
     s, mu, logvar = model_disentangle.encode(images)
 
-    images_all = torch.FloatTensor(args.class_num+1, args.class_num+1, 28, 28).fill_(1)
+    images_all = torch.FloatTensor(args.class_num+1, args.class_num+1, 28, 28).fill_(-1)
     
     s_all = []
     z_all = []
