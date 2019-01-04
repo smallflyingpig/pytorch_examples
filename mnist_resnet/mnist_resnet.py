@@ -29,6 +29,7 @@ parser.add_argument("--lr_decay", type=float, default=0.1, help="decay each epoc
 parser.add_argument("--weight_decay", type=float, default=4e-5, help="weight decay for optimizer")        
 parser.add_argument("--block_type", type=str, default="res", help="block type") 
 parser.add_argument("--log_file", type=str, default="mnist_resnet.log", help="log file") 
+parser.add_argument("--dataset", type=str, default="mnist", help="dataset, mnist or cifar") 
 
 
 # args
@@ -37,9 +38,6 @@ args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
 args.root = os.getcwd()
-
-
-
 
 runtime_cfg = EasyDict()
 
@@ -56,17 +54,25 @@ if not os.path.exists(runtime_cfg.log_dir):
 
 runtime_cfg.writer = SummaryWriter(log_dir=runtime_cfg.log_dir)
 
-train_loader=torch.utils.data.DataLoader( 
-            torchvision.datasets.MNIST(root=args.root+"./data/mnist",train=True, download=True, 
-            transform=transforms.Compose([transforms.RandomVerticalFlip(), transforms.ToTensor(),transforms.Normalize((0.1307,),(0.3081,))
-                    ])),
-            batch_size=args.batch_size,shuffle=True)
+if args.dataset == "mnist":
+    train_dataset = torchvision.datasets.MNIST(root=args.root+"./data/mnist",train=True, download=True, 
+                transform=transforms.Compose([transforms.RandomVerticalFlip(), transforms.ToTensor(),transforms.Normalize((0.1307,),(0.3081,))
+                        ]))
+    test_dataset = torchvision.datasets.MNIST(root=args.root+"./data/mnist",train=False, 
+                transform=transforms.Compose([transforms.RandomVerticalFlip(), transforms.ToTensor(),transforms.Normalize((0.1307,),(0.3081,))
+                        ]))
+elif args.dataset == "cifar":
+    train_dataset = torchvision.datasets.MNIST(root=args.root+"./data/cifar10",train=True, download=True, 
+                transform=transforms.Compose([transforms.RandomVerticalFlip(), transforms.ToTensor(),transforms.Normalize((0.1307,),(0.3081,))
+                        ]))
+    test_dataset = torchvision.datasets.MNIST(root=args.root+"./data/cifar10",train=False, 
+                transform=transforms.Compose([transforms.RandomVerticalFlip(), transforms.ToTensor(),transforms.Normalize((0.1307,),(0.3081,))
+                        ]))
+else:
+    raise NotImplementedError
 
-test_loader=torch.utils.data.DataLoader( 
-            torchvision.datasets.MNIST(root=args.root+"./data/mnist",train=False, 
-            transform=transforms.Compose([transforms.RandomVerticalFlip(), transforms.ToTensor(),transforms.Normalize((0.1307,),(0.3081,))
-                    ])),
-            batch_size=args.batch_size,shuffle=True)
+train_loader=torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size,shuffle=True)
+test_loader=torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size,shuffle=True)
 # 3*3 convolution
 def conv3x3(in_channels, out_channels, stride=1):
     return nn.Conv2d(in_channels, out_channels, kernel_size=3,
@@ -99,6 +105,9 @@ class ResidualBlock(nn.Module):
 
 
 class PolyBlock(nn.Module):
+    """
+    x_{n+1} = x_n + f(x_{n+1}), one conv for f
+    """
     def __init__(self, in_channels, out_channels, stride=1, downsample=None):
         super(PolyBlock, self).__init__()
         self.conv1 = conv3x3(in_channels, out_channels, stride)
@@ -125,6 +134,9 @@ class PolyBlock(nn.Module):
         return out
 
 class PolyBlockV1(nn.Module):  # implicit Euler
+    """
+    x_{n+1} = x_n + f(x_{n+1}), two conv for f
+    """
     def __init__(self, in_channels, out_channels, stride=1, downsample=None):
         super(PolyBlockV1, self).__init__()
         self.res_conv1 = nn.Sequential(
@@ -157,6 +169,126 @@ class PolyBlockV1(nn.Module):  # implicit Euler
         out1 = self.res_conv2(out1)
         out = self.relu(out1 + residual)
         return out
+
+class PolyBlockV2(nn.Module):  # implicit Euler
+    """
+    x_{n+1} = x_n + (f(x_n)+f(x_{n+1}))/2
+    """
+    def __init__(self, in_channels, out_channels, stride=1, downsample=None):
+        super(PolyBlockV2, self).__init__()
+        self.res_conv1 = nn.Sequential(
+            conv3x3(in_channels, out_channels, stride),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            conv3x3(out_channels, out_channels),
+            nn.BatchNorm2d(out_channels),
+        )
+        self.res_conv2 = nn.Sequential(
+            conv3x3(out_channels, out_channels, 1),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            conv3x3(out_channels, out_channels),
+            nn.BatchNorm2d(out_channels),
+        )
+        self.relu = nn.ReLU(inplace=True)
+        self.downsample = downsample
+
+    def forward(self, x):
+        residual = x
+        if self.downsample:
+            residual = self.downsample(x)
+
+        out = self.res_conv1(x)
+        # out = self.relu(out)
+        
+        out1 = self.relu(residual + out)
+        
+        out1 = self.res_conv2(out1)
+        out_final = self.relu((out1+out)/2 + residual)
+        return out_final
+
+
+class PolyBlockV3(nn.Module):  # implicit Euler
+    """
+    x_{n+1} = x_n + (f(x_n)+f(x_{n+1}))/2
+    """
+    def __init__(self, in_channels, out_channels, stride=1, downsample=None):
+        super(PolyBlockV3, self).__init__()
+        self.res_conv1 = nn.Sequential(
+            conv3x3(out_channels, out_channels),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            conv3x3(out_channels, out_channels),
+            nn.BatchNorm2d(out_channels),
+        )
+        self.res_conv2 = nn.Sequential(
+            conv3x3(out_channels, out_channels),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            conv3x3(out_channels, out_channels),
+            nn.BatchNorm2d(out_channels),
+        )
+        self.relu = nn.ReLU(inplace=True)
+        self.downsample = downsample
+
+    def forward(self, x):
+        residual = x
+        if self.downsample:
+            residual = self.downsample(x)
+
+        out = self.res_conv1(residual)
+        # out = self.relu(out)
+        
+        out1 = self.relu(residual + out)
+        
+        out1 = self.res_conv2(out1)
+        out_final = self.relu((out1+out)/2 + residual)
+        return out_final
+
+class RKBlock(nn.Module):  
+    """
+    Runge-Kutta
+    """
+    def __init__(self, in_channels, out_channels, stride=1, downsample=None):
+        super(RKBlock, self).__init__()
+        self.res_conv = nn.Sequential(
+            conv3x3(in_channels, out_channels, stride),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            conv3x3(out_channels, out_channels),
+            nn.BatchNorm2d(out_channels),
+        )
+        self.res_conv_h_2 = nn.Sequential(
+            conv3x3(out_channels, out_channels, 1),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            conv3x3(out_channels, out_channels),
+            nn.BatchNorm2d(out_channels),
+        )
+        self.res_conv_h = nn.Sequential(
+            conv3x3(out_channels, out_channels, 1),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            conv3x3(out_channels, out_channels),
+            nn.BatchNorm2d(out_channels),
+        )
+        self.relu = nn.ReLU(inplace=True)
+        self.downsample = downsample
+
+    def forward(self, x):
+        residual = x
+        if self.downsample:
+            residual = self.downsample(x)
+        
+        K1 = self.res_conv(x)
+        K2 = self.res_conv_h_2(self.relu(residual+K1/2))
+        K3 = self.res_conv_h_2(self.relu(residual+K2/2))
+        K4 = self.res_conv_h(self.relu(residual+K3))
+
+        out_final = self.relu(residual+K1/6 + K2/3 + K3/3 + K4/6)
+        
+        return out_final
+
 
 class TylorBlockV1(nn.Module):  # Tylor
     def __init__(self, in_channels, out_channels, stride=1, downsample=None):
@@ -195,14 +327,54 @@ class TylorBlockV1(nn.Module):  # Tylor
         out = self.res_conv1(x)
         # out = self.relu(out)
         
-        tylors = [residual, out]
+        # tylors = [residual, out]
         base = 1
+        out_final = residual + out
         for idx in range(self.order-1):
             base *= (idx+1)
             out = self.res_convs[idx](self.relu(out))
-            tylors.append(out/base)
-        out = self.relu(sum(tylors))
-        return out
+            out_final += (out/base)
+        out_final = self.relu(out_final)
+        return out_final
+
+class DenseBlock(nn.Module):  # Dense
+    def __init__(self, in_channels, out_channels, stride=1, downsample=None):
+        super(DenseBlock, self).__init__()
+        self.res_convs = []
+        self.order = args.order
+        for idx in range(self.order):
+            block = nn.Sequential(
+                    conv3x3(out_channels, out_channels, 1),
+                    nn.BatchNorm2d(out_channels),
+                    nn.ReLU(inplace=True),
+                    conv3x3(out_channels, out_channels),
+                    nn.BatchNorm2d(out_channels),
+                    )
+            if args.cuda:
+                block = block.cuda()
+            self.res_convs.append(
+                block
+            )
+        self.relu = nn.ReLU(inplace=True)
+        
+        self.downsample = downsample
+
+    def forward(self, x):
+        residual = x
+        if self.downsample:
+            residual = self.downsample(x)
+
+        out = residual
+        # out = self.relu(out)
+        
+        # tylors = [residual, out]
+        out_final = residual
+        for idx in range(self.order):
+            out = self.res_convs[idx](self.relu(out))
+            out_final += (out)
+        out_final = self.relu(out_final)
+        return out_final        
+
 
 
 # ResNet
@@ -243,6 +415,9 @@ class ResNet(nn.Module):
         out = self.fc(out)
         return out
 
+
+
+
 def l1_loss(params):
     param_sum = torch.zeros(1)
     param_cnt = 0
@@ -259,6 +434,9 @@ blocks = {
     "res": ResidualBlock,
     "poly": PolyBlock,
     "poly1": PolyBlockV1,
+    "RK": RKBlock, 
+    "poly2": PolyBlockV2,
+    "poly3": PolyBlockV3,
     "tylor": TylorBlockV1
 }
 # Create ResNet
