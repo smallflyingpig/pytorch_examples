@@ -55,24 +55,29 @@ if not os.path.exists(runtime_cfg.log_dir):
 runtime_cfg.writer = SummaryWriter(log_dir=runtime_cfg.log_dir)
 
 if args.dataset == "mnist":
-    train_dataset = torchvision.datasets.MNIST(root=args.root+"./data/mnist",train=True, download=True, 
-                transform=transforms.Compose([transforms.RandomVerticalFlip(), transforms.ToTensor(),transforms.Normalize((0.1307,),(0.3081,))
+    train_dataset = torchvision.datasets.MNIST(root=os.path.join(args.root, "./data/mnist"),train=True, download=True, 
+                transform=transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.1307,),(0.3081,))
                         ]))
-    test_dataset = torchvision.datasets.MNIST(root=args.root+"./data/mnist",train=False, 
-                transform=transforms.Compose([transforms.RandomVerticalFlip(), transforms.ToTensor(),transforms.Normalize((0.1307,),(0.3081,))
+    test_dataset = torchvision.datasets.MNIST(root=os.path.join(args.root, "./data/mnist"),train=False, 
+                transform=transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.1307,),(0.3081,))
                         ]))
+    args.input_channel = 1
+    args.num_classes = 10
 elif args.dataset == "cifar":
-    train_dataset = torchvision.datasets.MNIST(root=args.root+"./data/cifar10",train=True, download=True, 
-                transform=transforms.Compose([transforms.RandomVerticalFlip(), transforms.ToTensor(),transforms.Normalize((0.1307,),(0.3081,))
+    train_dataset = torchvision.datasets.CIFAR10(root=os.path.join(args.root, "./data/cifar10"),train=True, download=True, 
+                transform=transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.485, 0.456, 0.406),(0.229, 0.224, 0.225))
                         ]))
-    test_dataset = torchvision.datasets.MNIST(root=args.root+"./data/cifar10",train=False, 
-                transform=transforms.Compose([transforms.RandomVerticalFlip(), transforms.ToTensor(),transforms.Normalize((0.1307,),(0.3081,))
+    test_dataset = torchvision.datasets.CIFAR10(root=os.path.join(args.root, "./data/cifar10"),train=False, 
+                transform=transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.485, 0.456, 0.406),(0.229, 0.224, 0.225))
                         ]))
+    args.input_channel = 3
+    args.num_classes = 10
 else:
     raise NotImplementedError
 
-train_loader=torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size,shuffle=True)
-test_loader=torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size,shuffle=True)
+param = {"num_workers": 8, "pin_memory": True} if args.cuda else {"num_workers": 8}
+train_loader=torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, **param)
+test_loader=torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True, **param)
 # 3*3 convolution
 def conv3x3(in_channels, out_channels, stride=1):
     return nn.Conv2d(in_channels, out_channels, kernel_size=3,
@@ -382,7 +387,7 @@ class ResNet(nn.Module):
     def __init__(self, block, layers, num_classes=10):
         super(ResNet, self).__init__()
         self.in_channels = 16
-        self.conv = conv3x3(1, 16)
+        self.conv = conv3x3(args.input_channel, 16)
         self.bn = nn.BatchNorm2d(16)
         self.relu = nn.ReLU(inplace=True)
         self.layer1 = self.make_layer(block, 16, layers[0])
@@ -442,7 +447,8 @@ blocks = {
 # Create ResNet
 net_args = {
     "block": blocks[args.block_type], #PolyBlockV1, # ResidualBlock,
-    "layers": [2, 2, 2, 2]
+    "layers": [2, 2, 2, 2],
+    "num_classes": args.num_classes
 }
 model = ResNet(**net_args)
 if args.cuda:
@@ -461,14 +467,14 @@ def train(epoch, runtime_cfg):
     """
     model.train()
     train_loss = 0
-    # loader_bar = tqdm.tqdm(train_loader)
+    loader_bar = tqdm.tqdm(train_loader)
     # lr decay
     if epoch in runtime_cfg.lr_decay_epoches:
         runtime_cfg.current_lr *= args.lr_decay
         for param_group in optimizer.param_groups:
             param_group['lr'] = runtime_cfg.current_lr
         runtime_cfg.logger.info("decay lr to {}".format(runtime_cfg.current_lr))
-    for batch_idx, (data, label) in enumerate(train_loader):
+    for batch_idx, (data, label) in enumerate(loader_bar):
         data, label = data.requires_grad_(), label.requires_grad_(False)
         if args.cuda:
             data, label = data.cuda(), label.cuda()
@@ -480,9 +486,9 @@ def train(epoch, runtime_cfg):
         model.zero_grad()
         loss.backward()
         optimizer.step()
-        # loader_bar.set_description("[{:5s}] Epoch:{:5d}, loss:{:10.5f}".format("train", epoch, loss.cpu().item()))
+        loader_bar.set_description("[{:5s}] Epoch:{:5d}, loss:{:10.5f}".format("train", epoch, loss.cpu().item()))
         train_loss += loss.cpu().item()
-    # loader_bar.close()
+    loader_bar.close()
     train_loss = train_loss/len(train_loader)
     runtime_cfg.logger.info("[{:5s}] Epoch:{:5d}, loss:{:10.5f}".format("train", epoch, train_loss))
 
@@ -491,8 +497,8 @@ def test(epoch, runtime_cfg):
     model.eval()
     test_loss = 0
     accuracy = 0
-    # loader_bar = tqdm.tqdm(test_loader)
-    for batch_idx, (data, label) in enumerate(test_loader):
+    loader_bar = tqdm.tqdm(test_loader)
+    for batch_idx, (data, label) in enumerate(loader_bar):
         data, label = data.requires_grad_(False), label.requires_grad_(False)
         if args.cuda:
             data, label = data.cuda(), label.cuda()
@@ -503,12 +509,12 @@ def test(epoch, runtime_cfg):
         test_loss += loss.cpu().item()
         pred_label = pred.data.max(1,keepdim=True)[1]
         accuracy += pred_label.eq(label.data.view_as(pred_label)).long().cpu().sum()
-        # loader_bar.set_description("[{:5s}] Epoch:{:5d}, loss:{:10.5f}".format("test", epoch, loss.cpu().item()))
+        loader_bar.set_description("[{:5s}] Epoch:{:5d}, loss:{:10.5f}".format("test", epoch, loss.cpu().item()))
 
     accuracy = float(accuracy)/len(test_loader.dataset)
     test_loss = test_loss/len(test_loader)
 
-    # loader_bar.close()
+    loader_bar.close()
     runtime_cfg.logger.info("[{:5s}] Epoch:{:5d}, loss:{:10.5f}, accuracy:{:10.5f}".format("test", epoch, test_loss, accuracy))
     
     model_path = os.path.join(args.root, runtime_cfg.model_dir, "./model")
