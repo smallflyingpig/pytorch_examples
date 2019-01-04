@@ -29,7 +29,7 @@ parser.add_argument("--lr_decay", type=float, default=0.1, help="decay each epoc
 parser.add_argument("--weight_decay", type=float, default=4e-5, help="weight decay for optimizer")        
 parser.add_argument("--block_type", type=str, default="res", help="block type") 
 parser.add_argument("--log_file", type=str, default="mnist_resnet.log", help="log file") 
-parser.add_argument("--dataset", type=str, default="mnist", help="dataset, mnist or cifar") 
+parser.add_argument("--dataset", type=str, default="mnist", help="dataset, mnist or cifar10") 
 
 
 # args
@@ -63,7 +63,7 @@ if args.dataset == "mnist":
                         ]))
     args.input_channel = 1
     args.num_classes = 10
-elif args.dataset == "cifar":
+elif args.dataset == "cifar10":
     train_dataset = torchvision.datasets.CIFAR10(root=os.path.join(args.root, "./data/cifar10"),train=True, download=True, 
                 transform=transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.485, 0.456, 0.406),(0.229, 0.224, 0.225))
                         ]))
