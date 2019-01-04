@@ -457,7 +457,7 @@ if args.cuda:
 optimizer = optim.SGD(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay, momentum=0.9)
 loss_func = torch.nn.CrossEntropyLoss()
 
-runtime_cfg.lr_decay_epoches = [30, 60, 90]
+runtime_cfg.lr_decay_epoches = [int(args.epoches//4), int(args.epoches//2), int(args.epoches*3//4)]
 runtime_cfg.current_lr = args.learning_rate
 
 def train(epoch, runtime_cfg):
