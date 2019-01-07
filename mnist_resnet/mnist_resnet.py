@@ -11,6 +11,7 @@ import torch.optim as optim
 import torch.nn as nn
 from torch.autograd import Variable
 import torch.nn.functional as F
+import torchvision.models.resnet as resnet
 import numpy as np
 from easydict import EasyDict
 
@@ -54,30 +55,8 @@ if not os.path.exists(runtime_cfg.log_dir):
 
 runtime_cfg.writer = SummaryWriter(log_dir=runtime_cfg.log_dir)
 
-if args.dataset == "mnist":
-    train_dataset = torchvision.datasets.MNIST(root=os.path.join(args.root, "./data/mnist"),train=True, download=True, 
-                transform=transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.1307,),(0.3081,))
-                        ]))
-    test_dataset = torchvision.datasets.MNIST(root=os.path.join(args.root, "./data/mnist"),train=False, 
-                transform=transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.1307,),(0.3081,))
-                        ]))
-    args.input_channel = 1
-    args.num_classes = 10
-elif args.dataset == "cifar10":
-    train_dataset = torchvision.datasets.CIFAR10(root=os.path.join(args.root, "./data/cifar10"),train=True, download=True, 
-                transform=transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.485, 0.456, 0.406),(0.229, 0.224, 0.225))
-                        ]))
-    test_dataset = torchvision.datasets.CIFAR10(root=os.path.join(args.root, "./data/cifar10"),train=False, 
-                transform=transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.485, 0.456, 0.406),(0.229, 0.224, 0.225))
-                        ]))
-    args.input_channel = 3
-    args.num_classes = 10
-else:
-    raise NotImplementedError
 
-param = {"num_workers": 8, "pin_memory": True} if args.cuda else {"num_workers": 8}
-train_loader=torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, **param)
-test_loader=torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True, **param)
+
 # 3*3 convolution
 def conv3x3(in_channels, out_channels, stride=1):
     return nn.Conv2d(in_channels, out_channels, kernel_size=3,
@@ -86,6 +65,7 @@ def conv3x3(in_channels, out_channels, stride=1):
 
 # Residual block
 class ResidualBlock(nn.Module):
+    expansion = 1
     def __init__(self, in_channels, out_channels, stride=1, downsample=None):
         super(ResidualBlock, self).__init__()
         self.conv1 = conv3x3(in_channels, out_channels, stride)
@@ -113,6 +93,7 @@ class PolyBlock(nn.Module):
     """
     x_{n+1} = x_n + f(x_{n+1}), one conv for f
     """
+    expansion = 1
     def __init__(self, in_channels, out_channels, stride=1, downsample=None):
         super(PolyBlock, self).__init__()
         self.conv1 = conv3x3(in_channels, out_channels, stride)
@@ -142,6 +123,7 @@ class PolyBlockV1(nn.Module):  # implicit Euler
     """
     x_{n+1} = x_n + f(x_{n+1}), two conv for f
     """
+    expansion = 1
     def __init__(self, in_channels, out_channels, stride=1, downsample=None):
         super(PolyBlockV1, self).__init__()
         self.res_conv1 = nn.Sequential(
@@ -179,6 +161,7 @@ class PolyBlockV2(nn.Module):  # implicit Euler
     """
     x_{n+1} = x_n + (f(x_n)+f(x_{n+1}))/2
     """
+    expansion = 1
     def __init__(self, in_channels, out_channels, stride=1, downsample=None):
         super(PolyBlockV2, self).__init__()
         self.res_conv1 = nn.Sequential(
@@ -217,6 +200,7 @@ class PolyBlockV3(nn.Module):  # implicit Euler
     """
     x_{n+1} = x_n + (f(x_n)+f(x_{n+1}))/2
     """
+    expansion = 1
     def __init__(self, in_channels, out_channels, stride=1, downsample=None):
         super(PolyBlockV3, self).__init__()
         self.res_conv1 = nn.Sequential(
@@ -254,6 +238,7 @@ class RKBlock(nn.Module):
     """
     Runge-Kutta
     """
+    expansion = 1
     def __init__(self, in_channels, out_channels, stride=1, downsample=None):
         super(RKBlock, self).__init__()
         self.res_conv = nn.Sequential(
@@ -296,6 +281,7 @@ class RKBlock(nn.Module):
 
 
 class TylorBlockV1(nn.Module):  # Tylor
+    expansion = 1
     def __init__(self, in_channels, out_channels, stride=1, downsample=None):
         super(TylorBlockV1, self).__init__()
         self.res_conv1 = nn.Sequential(
@@ -343,6 +329,7 @@ class TylorBlockV1(nn.Module):  # Tylor
         return out_final
 
 class DenseBlock(nn.Module):  # Dense
+    expansion = 1
     def __init__(self, in_channels, out_channels, stride=1, downsample=None):
         super(DenseBlock, self).__init__()
         self.res_convs = []
@@ -383,18 +370,19 @@ class DenseBlock(nn.Module):  # Dense
 
 
 # ResNet
-class ResNet(nn.Module):
-    def __init__(self, block, layers, num_classes=10):
-        super(ResNet, self).__init__()
-        self.in_channels = 16
-        self.conv = conv3x3(args.input_channel, 16)
-        self.bn = nn.BatchNorm2d(16)
+class ResNet_Mnist(nn.Module):
+    def __init__(self, block, layers, num_classes=10, ndim=16):
+        super(ResNet_Mnist, self).__init__()
+        self.in_channels = ndim
+        self.conv = conv3x3(args.input_channel, ndim)
+        self.bn = nn.BatchNorm2d(ndim)
         self.relu = nn.ReLU(inplace=True)
-        self.layer1 = self.make_layer(block, 16, layers[0])
-        self.layer2 = self.make_layer(block, 32, layers[0], 2)
-        self.layer3 = self.make_layer(block, 64, layers[1], 2)
-        self.avg_pool = nn.AvgPool2d(7)
-        self.fc = nn.Linear(64, num_classes)
+        self.layer1 = self.make_layer(block, ndim, layers[0])
+        self.layer2 = self.make_layer(block, ndim*2, layers[1], 2)
+        self.layer3 = self.make_layer(block, ndim*4, layers[2], 2)
+        self.layer4 = self.make_layer(block, ndim*8, layers[3], 2)
+        self.avg_pool = nn.AvgPool2d(3)
+        self.fc = nn.Linear(ndim*8, num_classes)
 
     def make_layer(self, block, out_channels, blocks, stride=1):
         downsample = None
@@ -415,11 +403,43 @@ class ResNet(nn.Module):
         out = self.layer1(out)
         out = self.layer2(out)
         out = self.layer3(out)
+        out = self.layer4(out)
         out = self.avg_pool(out)
         out = out.view(out.size(0), -1)
         out = self.fc(out)
         return out
 
+
+
+
+
+
+if args.dataset == "mnist":
+    train_dataset = torchvision.datasets.MNIST(root=os.path.join(args.root, "./data/mnist"),train=True, download=True, 
+                transform=transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.1307,),(0.3081,))
+                        ]))
+    test_dataset = torchvision.datasets.MNIST(root=os.path.join(args.root, "./data/mnist"),train=False, 
+                transform=transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.1307,),(0.3081,))
+                        ]))
+    args.input_channel = 1
+    args.num_classes = 10
+    ResNet = ResNet_Mnist
+elif args.dataset == "cifar10":
+    train_dataset = torchvision.datasets.CIFAR10(root=os.path.join(args.root, "./data/cifar10"),train=True, download=True, 
+                transform=transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.485, 0.456, 0.406),(0.229, 0.224, 0.225))
+                        ]))
+    test_dataset = torchvision.datasets.CIFAR10(root=os.path.join(args.root, "./data/cifar10"),train=False, 
+                transform=transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.485, 0.456, 0.406),(0.229, 0.224, 0.225))
+                        ]))
+    args.input_channel = 3
+    args.num_classes = 10
+    ResNet = ResNet_Mnist
+else:
+    raise NotImplementedError
+
+param = {"num_workers": 8, "pin_memory": True} if args.cuda else {"num_workers": 8}
+train_loader=torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, **param)
+test_loader=torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True, **param)
 
 
 
@@ -444,11 +464,13 @@ blocks = {
     "poly3": PolyBlockV3,
     "tylor": TylorBlockV1
 }
+
 # Create ResNet
 net_args = {
     "block": blocks[args.block_type], #PolyBlockV1, # ResidualBlock,
     "layers": [2, 2, 2, 2],
-    "num_classes": args.num_classes
+    "num_classes": args.num_classes,
+    "ndim": 16 if args.dataset=='mnist' else 64
 }
 model = ResNet(**net_args)
 if args.cuda:
