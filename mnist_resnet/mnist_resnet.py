@@ -426,10 +426,14 @@ if args.dataset == "mnist":
     ResNet = ResNet_Mnist
 elif args.dataset == "cifar10":
     train_dataset = torchvision.datasets.CIFAR10(root=os.path.join(args.root, "./data/cifar10"),train=True, download=True, 
-                transform=transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.485, 0.456, 0.406),(0.229, 0.224, 0.225))
+                transform=transforms.Compose([
+                        transforms.RandomCrop(32, padding=4),
+                        transforms.RandomHorizontalFlip(),
+                        transforms.ToTensor(),
+                        transforms.Normalize((0.4914, 0.4822, 0.4465),(0.2023, 0.1994, 0.2010))
                         ]))
     test_dataset = torchvision.datasets.CIFAR10(root=os.path.join(args.root, "./data/cifar10"),train=False, 
-                transform=transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.485, 0.456, 0.406),(0.229, 0.224, 0.225))
+                transform=transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.4914, 0.4822, 0.4465),(0.2023, 0.1994, 0.2010))
                         ]))
     args.input_channel = 3
     args.num_classes = 10
