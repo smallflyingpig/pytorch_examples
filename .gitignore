@@ -2,3 +2,7 @@
 *.pt 
 *.png
 events.*
+*.jpg
+*.log
+*.pyc 
+*.ckpt
