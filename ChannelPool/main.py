@@ -26,8 +26,7 @@ parser.add_argument('--lr', default=0.001, type=float, help='learning rate')
 parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
 parser.add_argument('--pool', action='store_true', default=False, help='enable pool')
 parser.add_argument('--model', type=str, default='resnet', help="model type, default resnet")
-parser.add_argument('--log_dir', type=str, default='./default')
-parser.add_argument('--model_dir', type=str, default='./default')
+parser.add_argument('--log_dir', type=str, default='default')
 
 args = parser.parse_args()
 
@@ -35,7 +34,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 log_dir_full = os.path.join(os.getcwd(), this_dir, 'log', args.log_dir)
-model_dir_full = os.path.join(os.getcwd(), this_dir, 'model', args.model_dir)
+model_dir_full = os.path.join(os.getcwd(), this_dir, 'model', args.log_dir)
 if not os.path.exists(log_dir_full):
     os.makedirs(log_dir_full)
 if not os.path.exists(model_dir_full):
