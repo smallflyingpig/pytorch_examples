@@ -14,27 +14,27 @@ import os
 import sys
 import argparse
 
-from ChannelPool.models import resnet, resnet_pool
+# sys.path.append(os.getcwd())
+from models import resnet, resnet_pool
 from utils import progress_bar
 import logging
 from tensorboardX import SummaryWriter
 
 
-this_dir = 'ChannelPool'
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
 parser.add_argument('--lr', default=0.001, type=float, help='learning rate')
 parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
 parser.add_argument('--pool', action='store_true', default=False, help='enable pool')
 parser.add_argument('--model', type=str, default='resnet', help="model type, default resnet")
 parser.add_argument('--log_dir', type=str, default='default')
-
+parser.add_argument('--data_root', type=str, default="../data/cifar10", help="")
 args = parser.parse_args()
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
-log_dir_full = os.path.join(os.getcwd(), this_dir, 'log', args.log_dir)
-model_dir_full = os.path.join(os.getcwd(), this_dir, 'model', args.log_dir)
+log_dir_full = os.path.join(os.getcwd(), 'log', args.log_dir)
+model_dir_full = os.path.join(os.getcwd(), 'model', args.log_dir)
 if not os.path.exists(log_dir_full):
     os.makedirs(log_dir_full)
 if not os.path.exists(model_dir_full):
@@ -68,10 +68,10 @@ transform_test = transforms.Compose([
     transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
 ])
 
-trainset = torchvision.datasets.CIFAR10(root='./data/cifar10', train=True, download=True, transform=transform_train)
+trainset = torchvision.datasets.CIFAR10(root=args.data_root, train=True, download=True, transform=transform_train)
 trainloader = torch.utils.data.DataLoader(trainset, batch_size=128, shuffle=True, num_workers=2)
 
-testset = torchvision.datasets.CIFAR10(root='./data/cifar10', train=False, download=True, transform=transform_test)
+testset = torchvision.datasets.CIFAR10(root=args.data_root, train=False, download=True, transform=transform_test)
 testloader = torch.utils.data.DataLoader(testset, batch_size=100, shuffle=False, num_workers=2)
 
 classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')

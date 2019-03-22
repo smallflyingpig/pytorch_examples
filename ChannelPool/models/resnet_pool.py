@@ -9,7 +9,7 @@ Reference:
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from ChannelPool.models.channel_pool import GroupChannelPooling
+from models.channel_pool import GroupChannelPooling
 
 class BasicBlock(nn.Module):
     expansion = 1
