@@ -169,8 +169,8 @@ class ResNetSimple(nn.Module):
         self.bn1 = nn.BatchNorm2d(base_dim)
         self.layer1 = self._make_layer(block, base_dim, num_blocks[0], stride=1, inter_pool=inter_pool)
         self.layer2 = self._make_layer(block, base_dim*2, num_blocks[1], stride=2, channel_pool_flag=True, inter_pool=inter_pool)
-        self.layer3 = self._make_layer(block, base_dim*2, num_blocks[2], stride=2, channel_pool_flag=True, inter_pool=inter_pool)
-        self.linear = nn.Linear(base_dim*block.expansion, num_classes)
+        self.layer3 = self._make_layer(block, base_dim*4, num_blocks[2], stride=2, channel_pool_flag=True, inter_pool=inter_pool)
+        self.linear = nn.Linear(base_dim*4*block.expansion//2, num_classes)
 
     def _make_layer(self, block, planes, num_blocks, stride, channel_pool_flag=False, inter_pool=False):
         strides = [stride] + [1]*(num_blocks-1)
@@ -196,10 +196,10 @@ class ResNetSimple(nn.Module):
 
 
 def ResNetSimple18(inter_pool=False):
-    return ResNetSimple(Bottleneck, [2,2,2], inter_pool=inter_pool)
+    return ResNetSimple(Bottleneck, [3,3,3], inter_pool=inter_pool)
 
 def ResNetSimple110(inter_pool=False):
-    return ResNetSimple(Bottleneck, [9,9,9], inter_pool=inter_pool)
+    return ResNetSimple(Bottleneck, [18,18,18], inter_pool=inter_pool)
 
 
 

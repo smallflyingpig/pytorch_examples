@@ -34,9 +34,10 @@ def parser():
     parser.add_argument('--epoch', type=int, default=200, help="total epoch for the training")
     parser.add_argument('--val_interval', type=int, default=5, help="epoch interval")
     parser.add_argument('--inter_pool', action='store_true', default=False, help="enable inter pool")
+    parser.add_argument('--no_cuda', action='store_true', default=False, help="disable the Cuda")
     args = parser.parse_args()
     
-    args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    args.device = 'cuda' if not args.no_cuda and torch.cuda.is_available() else 'cpu'
     return args
 
 def prepare_log(args):
@@ -135,7 +136,18 @@ def main(args):
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4)
     
     # optimizer = optim.Adam(net.parameters(), lr=args.lr, weight_decay=5e-4)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, [82, 123], gamma=0.1)
+    def lr_schduler(epoch):
+        if epoch<1:
+            return 0.1
+        elif epoch<83:
+            return 1
+        elif epoch<123:
+            return 0.1
+        else:
+            return 0.01
+
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_schduler)
+    # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, [82, 123], gamma=0.1)
     # Training
     trainer = Trainer(net, trainloader, testloader, optimizer, args.device, criterion, args.logger, args.writer, args.model_dir_full)
     trainer.train(args.epoch, val_interval=args.val_interval, lr_scheduler=scheduler, start_epoch=start_epoch, best_acc=best_acc)
