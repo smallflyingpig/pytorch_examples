@@ -126,9 +126,10 @@ def main(args):
     # Training
     trainer = Trainer(net, trainloader, testloader, optimizer, args.device, criterion, args.logger, args.writer, args.model_dir_full)
     trainer.train(args.epoch, val_interval=args.val_interval, lr_scheduler=scheduler, start_epoch=start_epoch, best_acc=best_acc)
-    test_dict = trainer.test()
+    # load the best model
+    # test_dict = trainer.test()
     
-    args.logger.info("training and test end, best:{}, mean:{}, std:{}%".format(test_dict['best'] * 100., test_dict['mean']*100., test_dict['std']))
+    args.logger.info("training and test end, best:{}%".format(best_acc))
 
 
 if __name__=="__main__":
