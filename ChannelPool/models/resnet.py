@@ -195,11 +195,13 @@ class ResNetSimple(nn.Module):
         return out
 
 
-def ResNetSimple18():
-    return ResNetSimple(Bottleneck, [3,3,3])
+def ResNetSimple18(block_type='bottleneck'):
+    block = Bottleneck if block_type=='bottleneck' else BasicBlock
+    return ResNetSimple(block, [3,3,3])
 
-def ResNetSimple110():
-    return ResNetSimple(Bottleneck, [18,18,18])
+def ResNetSimple110(block_type='bottleneck'):
+    block = Bottleneck if block_type=='bottleneck' else BasicBlock
+    return ResNetSimple(block, [18,18,18])
 
 
 

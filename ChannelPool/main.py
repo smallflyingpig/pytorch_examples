@@ -35,6 +35,7 @@ def parser():
     parser.add_argument('--val_interval', type=int, default=5, help="epoch interval")
     parser.add_argument('--inter_pool', action='store_true', default=False, help="enable inter pool")
     parser.add_argument('--no_cuda', action='store_true', default=False, help="disable the Cuda")
+    parser.add_argument('--block_type', type=str, default='bottleneck', help='set the block type')
     args = parser.parse_args()
     
     args.device = 'cuda' if not args.no_cuda and torch.cuda.is_available() else 'cpu'
@@ -136,7 +137,7 @@ def main(args):
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4)
     
     # optimizer = optim.Adam(net.parameters(), lr=args.lr, weight_decay=5e-4)
-    def lr_schduler(epoch):
+    def lr_schduler(epoch, lr_gamma=[0.1, 1, 0.01, 0.001]):
         if epoch<1:
             return 0.1
         elif epoch<83:

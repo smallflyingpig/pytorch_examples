@@ -48,7 +48,7 @@ class BasicBlock(nn.Module):
         self.bn2 = nn.BatchNorm2d(planes)
         self.pool_layer = nn.Sequential()
         self.pool_ratio = 1
-        if pool:
+        if pool and self.expansion*planes>in_planes*2:
             self.pool_layer = nn.Sequential(
                 GroupChannelPooling(2,2)
             )
@@ -57,8 +57,8 @@ class BasicBlock(nn.Module):
         self.shortcut = nn.Sequential()
         if stride != 1 or in_planes != self.expansion*planes//self.pool_ratio:
             self.shortcut = nn.Sequential(
-                nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(self.expansion*planes)
+                nn.Conv2d(in_planes, self.expansion*planes//self.pool_ratio, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(self.expansion*planes//self.pool_ratio)
             )
 
     def forward(self, x):
@@ -195,11 +195,13 @@ class ResNetSimple(nn.Module):
         return out
 
 
-def ResNetSimple18(inter_pool=False):
-    return ResNetSimple(Bottleneck, [3,3,3], inter_pool=inter_pool)
+def ResNetSimple18(block_type='bottleneck', inter_pool=False):
+    block = Bottleneck if block_type=='bottleneck' else BasicBlock
+    return ResNetSimple(block, [3,3,3], inter_pool=inter_pool)
 
-def ResNetSimple110(inter_pool=False):
-    return ResNetSimple(Bottleneck, [18,18,18], inter_pool=inter_pool)
+def ResNetSimple110(block_type='bottleneck', inter_pool=False):
+    block = Bottleneck if block_type=='bottleneck' else BasicBlock
+    return ResNetSimple(block, [18,18,18], inter_pool=inter_pool)
 
 
 
