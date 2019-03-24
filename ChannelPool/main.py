@@ -28,11 +28,12 @@ def parser():
     parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
     parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
     parser.add_argument('--pool', action='store_true', default=False, help='enable pool')
-    parser.add_argument('--model', type=str, default='resnet', help="model type, default resnet")
+    parser.add_argument('--model', type=str, default='resnet18', help="model type, resnet18, resnet101, default resnet18")
     parser.add_argument('--log_dir', type=str, default='default')
     parser.add_argument('--data_root', type=str, default="../data/cifar10", help="")
     parser.add_argument('--epoch', type=int, default=200, help="total epoch for the training")
     parser.add_argument('--val_interval', type=int, default=5, help="epoch interval")
+    parser.add_argument('--inter_pool', action='store_true', default=False, help="enable inter pool")
     args = parser.parse_args()
     
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -91,9 +92,21 @@ def main(args):
     print('==> Building model..')
     
     if args.pool:
-        net = resnet_pool.ResNetSimple18()
+        if args.model == 'resnet18':
+            net = resnet_pool.ResNetSimple18(args.inter_pool)
+        elif args.model == 'resnet110':
+            net = resnet_pool.ResNetSimple110(args.inter_pool)
+        else:
+            raise NotImplementedError
+        
     else:
-        net = resnet.ResNetSimple18()
+        if args.model == 'resnet18':
+            net = resnet.ResNetSimple18()
+        elif args.model == 'resnet110':
+            net = resnet.ResNetSimple110()
+        else:
+            raise NotImplementedError
+        
     # net = PreActResNet18()
     # net = GoogLeNet()
     # net = DenseNet121()
