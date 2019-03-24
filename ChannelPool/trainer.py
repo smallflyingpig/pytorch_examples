@@ -68,12 +68,12 @@ class Trainer(object):
                 _, predicted = outputs.max(1)
                 total += targets.size(0)
                 correct += predicted.eq(targets).sum().item()
-                if log:
-                    progress_bar(batch_idx, len(self.valloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
-                        % (test_loss/(batch_idx+1), 100.*correct/total, correct, total))
-                    self.logger.debug("epoch:{} |Batch:{} | Type:{} | Loss:{} | Acc:{}% ({:d}/{:d})".format(
-                    epoch, batch_idx, 'test', test_loss/(batch_idx+1), 100.*correct/total, correct, total
-                    ))
+                
+                progress_bar(batch_idx, len(self.valloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
+                    % (test_loss/(batch_idx+1), 100.*correct/total, correct, total))
+                self.logger.debug("epoch:{} |Batch:{} | Type:{} | Loss:{} | Acc:{}% ({:d}/{:d})".format(
+                epoch, batch_idx, 'test', test_loss/(batch_idx+1), 100.*correct/total, correct, total
+                ))
         test_loss = test_loss/total
         correct = 100. * correct/total
         if log:
