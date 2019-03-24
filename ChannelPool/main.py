@@ -47,8 +47,8 @@ def prepare_log(args):
         os.makedirs(args.model_dir_full)
     
     handler_stdout = logging.StreamHandler(sys.stdout)
-    handler_stdout.setLevel(logging.ERROR)
-    logging.basicConfig(format='%(message)s', level=logging.INFO, handlers=[
+    handler_stdout.setLevel(logging.INFO)
+    logging.basicConfig(format='%(message)s', level=logging.DEBUG, handlers=[
         logging.FileHandler(os.path.join(args.log_dir_full, 'log.txt')),
     ] )
     logger = logging.getLogger()

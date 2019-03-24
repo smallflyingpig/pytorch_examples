@@ -42,7 +42,7 @@ class Trainer(object):
     
             progress_bar(batch_idx, len(self.trainloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
                 % (train_loss/(batch_idx+1), 100.*correct/total, correct, total))
-            self.logger.info("epoch:{} | Batch:{} | Type:{} | Loss:{} | Acc:{}% ({:d}/{:d})".format(
+            self.logger.debug("epoch:{} | Batch:{} | Type:{} | Loss:{} | Acc:{}% ({:d}/{:d})".format(
                 epoch, batch_idx, 'train', train_loss/(batch_idx+1), 100.*correct/total, correct, total
             ))
         train_loss = train_loss/total
@@ -69,7 +69,7 @@ class Trainer(object):
     
                 progress_bar(batch_idx, len(self.valloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
                     % (test_loss/(batch_idx+1), 100.*correct/total, correct, total))
-                self.logger.info("epoch:{} |Batch:{} | Type:{} | Loss:{} | Acc:{}% ({:d}/{:d})".format(
+                self.logger.debug("epoch:{} |Batch:{} | Type:{} | Loss:{} | Acc:{}% ({:d}/{:d})".format(
                 epoch, batch_idx, 'test', test_loss/(batch_idx+1), 100.*correct/total, correct, total
                 ))
         test_loss = test_loss/total
@@ -87,9 +87,13 @@ class Trainer(object):
             dataloader = self.valloader
         accu_list = []
         for idx in range(loop_num):
-            accu_list.append(self.test(idx))
+            accu_list.append(self.eval(idx))
         accu_np = np.array(accu_list)
-        best, mean, std = np.max(accu_np), np.mean(accu_np), np.std(accu_np)
+        try:
+            best, mean, std = np.max(accu_np), np.mean(accu_np), np.std(accu_np)
+        except ValueError as e:
+            print(e)
+            print(accu_np)
         return {'best':best, 'mean':mean, 'std':std}
 
     
