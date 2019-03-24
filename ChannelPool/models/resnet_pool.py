@@ -93,8 +93,8 @@ class Bottleneck(nn.Module):
         self.shortcut = nn.Sequential()
         if stride != 1 or in_planes != self.expansion*planes//self.pool_ratio:
             self.shortcut = nn.Sequential(
-                nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(self.expansion*planes)
+                nn.Conv2d(in_planes, self.expansion*planes//self.pool_ratio, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(self.expansion*planes//self.pool_ratio)
             )
 
     def forward(self, x):
@@ -167,7 +167,7 @@ class ResNetSimple(nn.Module):
 
         self.conv1 = nn.Conv2d(3, base_dim, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(base_dim)
-        self.layer1 = self._make_layer(block, base_dim, num_blocks[0], stride=1, inter_pool=inter_pool)
+        self.layer1 = self._make_layer(block, base_dim, num_blocks[0], stride=1, channel_pool_flag=True, inter_pool=inter_pool)
         self.layer2 = self._make_layer(block, base_dim*2, num_blocks[1], stride=2, channel_pool_flag=True, inter_pool=inter_pool)
         self.layer3 = self._make_layer(block, base_dim*4, num_blocks[2], stride=2, channel_pool_flag=True, inter_pool=inter_pool)
         self.linear = nn.Linear(base_dim*4*block.expansion//2, num_classes)
@@ -178,10 +178,10 @@ class ResNetSimple(nn.Module):
         for stride in strides:
             layers.append(block(self.in_planes, planes, stride, pool=inter_pool))
             self.in_planes = planes * block.expansion
-        if channel_pool_flag:
-            if not inter_pool:
-                layers.append(GroupChannelPooling(kernel_size=2, stride=2))
-            self.in_planes = self.in_planes//2
+            if channel_pool_flag:
+                if not inter_pool:
+                    layers.append(GroupChannelPooling(kernel_size=2, stride=2))
+                self.in_planes = self.in_planes//2
         return nn.Sequential(*layers)
 
     def forward(self, x):
