@@ -25,13 +25,13 @@ from tensorboardX import SummaryWriter
     
 def parser():
     parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
-    parser.add_argument('--lr', default=0.001, type=float, help='learning rate')
+    parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
     parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
     parser.add_argument('--pool', action='store_true', default=False, help='enable pool')
     parser.add_argument('--model', type=str, default='resnet', help="model type, default resnet")
     parser.add_argument('--log_dir', type=str, default='default')
     parser.add_argument('--data_root', type=str, default="../data/cifar10", help="")
-    parser.add_argument('--epoch', type=int, default=350, help="total epoch for the training")
+    parser.add_argument('--epoch', type=int, default=200, help="total epoch for the training")
     parser.add_argument('--val_interval', type=int, default=5, help="epoch interval")
     args = parser.parse_args()
     
@@ -119,14 +119,14 @@ def main(args):
         start_epoch = checkpoint['epoch']
     
     criterion = nn.CrossEntropyLoss()
-    # optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
+    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4)
     
-    optimizer = optim.Adam(net.parameters(), lr=args.lr, weight_decay=5e-4)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, [100, 200], gamma=0.2)
+    # optimizer = optim.Adam(net.parameters(), lr=args.lr, weight_decay=5e-4)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, [82, 123], gamma=0.1)
     # Training
     trainer = Trainer(net, trainloader, testloader, optimizer, args.device, criterion, args.logger, args.writer, args.model_dir_full)
-    trainer.train(args.epoch, val_interval=args.val_interval, lr_scheduler=scheduler, start_epoch=start_epoch)
-    test_dict = trainer.test()
+    trainer.train(args.epoch, val_interval=args.val_interval, lr_scheduler=scheduler, start_epoch=start_epoch, best_acc=best_acc)
+    # test_dict = trainer.test()
     # for epoch in range(start_epoch, start_epoch+args.epoch):
     #     scheduler.step()
     #     train(epoch)

@@ -196,10 +196,10 @@ class ResNetSimple(nn.Module):
 
 
 def ResNetSimple18():
-    return ResNetSimple(Bottleneck, [2,2,2])
+    return ResNetSimple(Bottleneck, [3,3,3])
 
 def ResNetSimple110():
-    return ResNetSimple(Bottleneck, [9,9,9])
+    return ResNetSimple(Bottleneck, [18,18,18])
 
 
 

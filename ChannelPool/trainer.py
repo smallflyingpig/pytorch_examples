@@ -11,7 +11,8 @@ class Trainer(object):
         self.save_model_dir = save_model_dir
         self.best_acc = 0
 
-    def train(self, total_epoch, val_interval, lr_scheduler=None, start_epoch=0):
+    def train(self, total_epoch, val_interval, lr_scheduler=None, start_epoch=0, best_acc=0):
+        self.best_acc = best_acc
         for epoch_idx in range(start_epoch, total_epoch):
             if lr_scheduler is not None:
                 lr_scheduler.step()
@@ -19,6 +20,7 @@ class Trainer(object):
             if epoch_idx % val_interval == 0 or epoch_idx == total_epoch-1:
                 acc = self.eval(epoch_idx)
                 self.update_best_acc(acc, epoch=epoch_idx)
+        
             
             
     def train_once(self, epoch):
@@ -51,7 +53,7 @@ class Trainer(object):
         self.writer.add_scalars('accu', {'train_accu':correct}, global_step=epoch)
         
         
-    def eval(self, epoch):
+    def eval(self, epoch, log=True):
         self.model.eval()
         test_loss = 0
         correct = 0
@@ -66,28 +68,29 @@ class Trainer(object):
                 _, predicted = outputs.max(1)
                 total += targets.size(0)
                 correct += predicted.eq(targets).sum().item()
-    
-                progress_bar(batch_idx, len(self.valloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
-                    % (test_loss/(batch_idx+1), 100.*correct/total, correct, total))
-                self.logger.debug("epoch:{} |Batch:{} | Type:{} | Loss:{} | Acc:{}% ({:d}/{:d})".format(
-                epoch, batch_idx, 'test', test_loss/(batch_idx+1), 100.*correct/total, correct, total
-                ))
+                if log:
+                    progress_bar(batch_idx, len(self.valloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
+                        % (test_loss/(batch_idx+1), 100.*correct/total, correct, total))
+                    self.logger.debug("epoch:{} |Batch:{} | Type:{} | Loss:{} | Acc:{}% ({:d}/{:d})".format(
+                    epoch, batch_idx, 'test', test_loss/(batch_idx+1), 100.*correct/total, correct, total
+                    ))
         test_loss = test_loss/total
         correct = 100. * correct/total
-        self.writer.add_scalars('loss', {'test_loss':test_loss}, global_step=epoch)
-        self.writer.add_scalars('accu', {'test_accu':correct}, global_step=epoch)
+        if log:
+            self.writer.add_scalars('loss', {'test_loss':test_loss}, global_step=epoch)
+            self.writer.add_scalars('accu', {'test_accu':correct}, global_step=epoch)
     
         # Save checkpoint.
         acc = 100.*correct/total
         return acc
         
     
-    def test(self, loop_num=5, dataloader=None):
+    def test(self, loop_num=1, dataloader=None):
         if dataloader is None:
             dataloader = self.valloader
         accu_list = []
         for idx in range(loop_num):
-            accu_list.append(self.eval(idx))
+            accu_list.append(self.eval(idx, log=False))
         accu_np = np.array(accu_list)
         try:
             best, mean, std = np.max(accu_np), np.mean(accu_np), np.std(accu_np)
