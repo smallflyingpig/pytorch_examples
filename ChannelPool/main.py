@@ -142,7 +142,7 @@ def main(args):
     # load the best model
     # test_dict = trainer.test()
     
-    args.logger.info("training and test end, best:{}%".format(best_acc))
+    args.logger.info("training and test end, best:{}%".format(trainer.best_acc))
 
 
 if __name__=="__main__":
