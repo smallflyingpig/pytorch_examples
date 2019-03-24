@@ -116,6 +116,46 @@ def ResNet152():
     return ResNet(Bottleneck, [3,8,36,3])
 
 
+
+class ResNetSimple(nn.Module):
+    def __init__(self, block, num_blocks, num_classes=10, base_dim=16):
+        super(ResNetSimple, self).__init__()
+        self.in_planes = base_dim
+
+        self.conv1 = nn.Conv2d(3, base_dim, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(base_dim)
+        self.layer1 = self._make_layer(block, base_dim, num_blocks[0], stride=1)
+        self.layer2 = self._make_layer(block, base_dim*2, num_blocks[1], stride=2)
+        self.layer3 = self._make_layer(block, base_dim*2, num_blocks[2], stride=2)
+        self.linear = nn.Linear(base_dim*block.expansion, num_classes)
+
+    def _make_layer(self, block, planes, num_blocks, stride):
+        strides = [stride] + [1]*(num_blocks-1)
+        layers = []
+        for stride in strides:
+            layers.append(block(self.in_planes, planes, stride))
+            self.in_planes = planes * block.expansion
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.layer1(out)
+        out = self.layer2(out)
+        out = self.layer3(out)
+        out = F.avg_pool2d(out, 8)
+        out = out.view(out.size(0), -1)
+        out = self.linear(out)
+        return out
+
+
+def ResNetSimple18():
+    return ResNetSimple(BasicBlock, [3,3,3])
+
+def ResNetSimple110():
+    return ResNetSimple(BasicBlock, [18,18,18])
+
+
+
 def test():
     net = ResNet18()
     y = net(torch.randn(1,3,32,32))

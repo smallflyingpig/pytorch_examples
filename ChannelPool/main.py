@@ -32,10 +32,11 @@ class Trainer(object):
         for epoch_idx in range(start_epoch, total_epoch):
             if lr_scheduler is not None:
                 lr_scheduler.step()
-            self.train_once(epoch_idx)
             if epoch_idx % val_interval == 0 or epoch_idx == total_epoch-1:
                 acc = self.eval(epoch_idx)
                 self.update_best_acc(acc, epoch=epoch_idx)
+            self.train_once(epoch_idx)
+            
             
     def train_once(self, epoch):
         print('\nEpoch: %d' % epoch)
@@ -73,7 +74,7 @@ class Trainer(object):
         correct = 0
         total = 0
         with torch.no_grad():
-            for batch_idx, (inputs, targets) in enumerate(self.testloader):
+            for batch_idx, (inputs, targets) in enumerate(self.valloader):
                 inputs, targets = inputs.to(self.device), targets.to(self.device)
                 outputs = self.model(inputs)
                 loss = self.criterion(outputs, targets)
@@ -83,7 +84,7 @@ class Trainer(object):
                 total += targets.size(0)
                 correct += predicted.eq(targets).sum().item()
     
-                progress_bar(batch_idx, len(self.testloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
+                progress_bar(batch_idx, len(self.valloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
                     % (test_loss/(batch_idx+1), 100.*correct/total, correct, total))
                 self.logger.info("epoch:{} |Batch:{} | Type:{} | Loss:{} | Acc:{}% ({:d}/{:d})".format(
                 epoch, batch_idx, 'test', test_loss/(batch_idx+1), 100.*correct/total, correct, total
@@ -117,7 +118,7 @@ class Trainer(object):
                 'acc': acc,
                 'epoch': epoch,
             }
-            torch.save(state, os.path.join(self.model_dir_full, 'ckpt.t7'))
+            torch.save(state, os.path.join(self.save_model_dir, 'ckpt.t7'))
             self.best_acc = acc
     
     
@@ -130,6 +131,7 @@ def parser():
     parser.add_argument('--log_dir', type=str, default='default')
     parser.add_argument('--data_root', type=str, default="../data/cifar10", help="")
     parser.add_argument('--epoch', type=int, default=350, help="total epoch for the training")
+    parser.add_argument('--val_interval', type=int, default=5, help="epoch interval")
     args = parser.parse_args()
     
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -176,10 +178,11 @@ def main(args):
     ])
     
     trainset = torchvision.datasets.CIFAR10(root=args.data_root, train=True, download=True, transform=transform_train)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=128, shuffle=True, num_workers=2)
+    param = {"num_workers":4, "pin_memory":True} if args.device=='cuda' else {}
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=128, shuffle=True, **param)
     
     testset = torchvision.datasets.CIFAR10(root=args.data_root, train=False, download=True, transform=transform_test)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=100, shuffle=False, num_workers=2)
+    testloader = torch.utils.data.DataLoader(testset, batch_size=100, shuffle=False, **param)
     
     classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
     
@@ -187,9 +190,9 @@ def main(args):
     print('==> Building model..')
     
     if args.pool:
-        net = resnet_pool.ResNet101()
+        net = resnet_pool.ResNetSimple18()
     else:
-        net = resnet.ResNet101()
+        net = resnet.ResNetSimple18()
     # net = PreActResNet18()
     # net = GoogLeNet()
     # net = DenseNet121()
@@ -221,7 +224,7 @@ def main(args):
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, [100, 200], gamma=0.2)
     # Training
     trainer = Trainer(net, trainloader, testloader, optimizer, args.device, criterion, args.logger, args.writer, args.model_dir_full)
-    trainer.train(args.epoch, val_interval=5, lr_scheduler=scheduler, start_epoch=start_epoch)
+    trainer.train(args.epoch, val_interval=args.val_interval, lr_scheduler=scheduler, start_epoch=start_epoch)
     test_dict = trainer.test()
     # for epoch in range(start_epoch, start_epoch+args.epoch):
     #     scheduler.step()
