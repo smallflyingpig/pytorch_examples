@@ -16,7 +16,7 @@ import argparse
 import numpy as np
 
 # sys.path.append(os.getcwd())
-from models import resnet, resnet_pool, resnet_filter, resnet_max_cp, resnet_cn
+from models import resnet, resnet_pool, resnet_filter, resnet_max_cp, resnet_cn, densenet, densenet_cn
 from utils import progress_bar
 from trainer import Trainer
 import logging
@@ -39,6 +39,8 @@ def parser():
     parser.add_argument('--optimizer', type=str, default='adam', help='adam or sgd')
     parser.add_argument('--batch_size', type=int, default=128, help='batch size')
     parser.add_argument('--base_dim', type=int, default=64, help='default base dim for resnet, default 64')
+    parser.add_argument('--growing_rate', type=int, default=12, help='growing rate')
+    
     args = parser.parse_args()
     
     args.device = 'cuda' if not args.no_cuda and torch.cuda.is_available() else 'cpu'
@@ -95,44 +97,20 @@ def main(args):
     
     # Model
     print('==> Building model..')
-    
-    if args.pool_type == 'max_cp':
-        if args.model == 'resnet18':
-            net = resnet_max_cp.ResNetSimple18(args.block_type)
-        elif args.model == 'resnet110':
-            net = resnet_max_cp.ResNetSimple110(args.block_type)
-        else:
-            raise NotImplementedError
-    elif args.pool_type == 'none':
-        if args.model == 'resnet18':
-            net = resnet.ResNetSimple18(args.block_type)
-        elif args.model == 'resnet110':
-            net = resnet.ResNetSimple110(args.block_type)
-        else:
-            raise NotImplementedError
-    elif args.pool_type == 'pool':
-        if args.model == 'resnet18':
-            net = resnet_pool.ResNetSimple18()
-        elif args.model == 'resnet110':
-            net = resnet_pool.ResNetSimple110(args.block_type)
-        else:
-            raise NotImplementedError
-    elif args.pool_type == 'filter':
-        if args.model == 'resnet18':
-            net = resnet_filter.ResNetSimple18(args.block_type)
-        elif args.model == 'resnet110':
-            net = resnet_filter.ResNetSimple110(args.block_type)
-        else:
-            raise NotImplementedError
-    elif args.pool_type == 'cn':
-        if args.model == 'resnet18':
-            net = resnet_cn.ResNetSimple18(args.block_type)
-        elif args.model == 'resnet110':
-            net = resnet_cn.ResNetSimple110(args.block_type)
-        else:
-            raise NotImplementedError
-    else:
-        raise NotImplementedError
+    model_dict_all = {
+        #'max_cp':{'resnet18':resnet_max_cp.ResNetSimple18, 'resnet110':resnet_max_cp.ResNetSimple110},
+        'none':{
+            'resnet18':{'model':resnet.ResNetSimple18, 'param': args.block_type}, 
+            'resnet110':{'model':resnet.ResNetSimple110, 'param':args.block_type},
+            'densenet':{'model':densenet.densenet_cifar, 'param':args.growing_rate}
+            },
+        'cn':{
+            'resnet18':{'model':resnet_cn.ResNetSimple18, 'param':args.block_type}, 
+            'resnet110':{'model':resnet_cn.ResNetSimple110, 'param':args.block_type},
+            'densetnet':{'model':densenet_cn.densenet_cifar, 'param':args.growing_rate}
+            }
+    }
+    net = model_dict_all[args.pool_type][args.model]['model'](model_dict_all[args.pool_type][args.model]['param'])
         
     # net = PreActResNet18()
     # net = GoogLeNet()
