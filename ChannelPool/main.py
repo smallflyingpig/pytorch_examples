@@ -16,7 +16,7 @@ import argparse
 import numpy as np
 
 # sys.path.append(os.getcwd())
-from models import resnet, resnet_pool, resnet_filter
+from models import resnet, resnet_pool, resnet_filter, resnet_max_cp, resnet_cn
 from utils import progress_bar
 from trainer import Trainer
 import logging
@@ -27,7 +27,7 @@ def parser():
     parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
     parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
     parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
-    parser.add_argument('--pool', action='store_true', default=False, help='enable pool')
+    parser.add_argument('--pool_type', type=str, default='pool', help='none, pool, max_cp, filter, or cn')
     parser.add_argument('--model', type=str, default='resnet18', help="model type, resnet18, resnet101, default resnet18")
     parser.add_argument('--log_dir', type=str, default='default')
     parser.add_argument('--data_root', type=str, default="../data/cifar10", help="")
@@ -96,21 +96,43 @@ def main(args):
     # Model
     print('==> Building model..')
     
-    if args.pool:
+    if args.pool_type == 'max_cp':
         if args.model == 'resnet18':
-            net = resnet_filter.ResNetSimple18(args.base_dim)
+            net = resnet_max_cp.ResNetSimple18()
         elif args.model == 'resnet110':
-            net = resnet_filter.ResNetSimple110(args.base_dim)
+            net = resnet_max_cp.ResNetSimple110()
         else:
             raise NotImplementedError
-        
-    else:
+    elif args.pool_type == 'none':
         if args.model == 'resnet18':
             net = resnet.ResNetSimple18()
         elif args.model == 'resnet110':
             net = resnet.ResNetSimple110()
         else:
             raise NotImplementedError
+    elif args.pool_type == 'pool':
+        if args.model == 'resnet18':
+            net = resnet_pool.ResNetSimple18()
+        elif args.model == 'resnet110':
+            net = resnet_pool.ResNetSimple110()
+        else:
+            raise NotImplementedError
+    elif args.pool_type == 'filter':
+        if args.model == 'resnet18':
+            net = resnet_filter.ResNetSimple18()
+        elif args.model == 'resnet110':
+            net = resnet_filter.ResNetSimple110()
+        else:
+            raise NotImplementedError
+    elif args.pool_type == 'cn':
+        if args.model == 'resnet18':
+            net = resnet_cn.ResNetSimple18()
+        elif args.model == 'resnet110':
+            net = resnet_cn.ResNetSimple110()
+        else:
+            raise NotImplementedError
+    else:
+        raise NotImplementedError
         
     # net = PreActResNet18()
     # net = GoogLeNet()

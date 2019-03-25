@@ -107,6 +107,50 @@ class Bottleneck(nn.Module):
         return out
 
 
+
+
+
+from models.channel_norm import ChannelNorm
+class BottleneckCN(nn.Module):
+    expansion = 4
+
+    def __init__(self, in_planes, planes, stride=1, pool=False):
+        super(BottleneckCN, self).__init__()
+        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.conv3 = nn.Conv2d(planes, self.expansion*planes, kernel_size=1, bias=False)
+        self.bn3 = nn.BatchNorm2d(self.expansion*planes)
+        self.pool_layer = nn.Sequential()
+        self.pool_ratio = 1
+        self.planes = planes
+        self.squeeze_ratio = in_planes//planes
+        self.channel_norm = ChannelNorm()
+        if pool:
+            self.pool_layer = nn.Sequential(
+                GroupChannelPooling(2,2)
+            )
+            self.pool_ratio = 2
+
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_planes != self.expansion*planes//self.pool_ratio:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_planes, self.expansion*planes//self.pool_ratio, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(self.expansion*planes//self.pool_ratio)
+            )
+
+    def forward(self, x):
+        out = F.relu(self.channel_norm(x))
+        # out = F.relu(self.bn1(self.conv1(x)))
+        out = F.relu(self.channel_norm(self.conv2(out)))
+        out = self.bn3(self.conv3(out))
+        # out = self.pool_layer(out)
+        out += self.shortcut(x)
+        out = F.relu(out)
+        return out
+
+
 class ResNet(nn.Module):
     def __init__(self, block, num_blocks, num_classes=10, base_dim=64):
         super(ResNet, self).__init__()
@@ -196,11 +240,11 @@ class ResNetSimple(nn.Module):
 
 
 def ResNetSimple18(block_type='bottleneck', inter_pool=False):
-    block = Bottleneck if block_type=='bottleneck' else BasicBlock
+    block = BottleneckPool if block_type=='bottleneck' else BasicBlock
     return ResNetSimple(block, [3,3,3], inter_pool=inter_pool)
 
 def ResNetSimple110(block_type='bottleneck', inter_pool=False):
-    block = Bottleneck if block_type=='bottleneck' else BasicBlock
+    block = BottleneckPool if block_type=='bottleneck' else BasicBlock
     return ResNetSimple(block, [18,18,18], inter_pool=inter_pool)
 
 
