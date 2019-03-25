@@ -16,7 +16,7 @@ import argparse
 import numpy as np
 
 # sys.path.append(os.getcwd())
-from models import resnet, resnet_pool
+from models import resnet, resnet_pool, resnet_filter
 from utils import progress_bar
 from trainer import Trainer
 import logging
@@ -36,6 +36,7 @@ def parser():
     parser.add_argument('--inter_pool', action='store_true', default=False, help="enable inter pool")
     parser.add_argument('--no_cuda', action='store_true', default=False, help="disable the Cuda")
     parser.add_argument('--block_type', type=str, default='bottleneck', help='set the block type')
+    parser.add_argument('--optimizer', type=str, default='adam', help='adam or sgd')
     args = parser.parse_args()
     
     args.device = 'cuda' if not args.no_cuda and torch.cuda.is_available() else 'cpu'
@@ -95,9 +96,9 @@ def main(args):
     
     if args.pool:
         if args.model == 'resnet18':
-            net = resnet_pool.ResNetSimple18(args.inter_pool)
+            net = resnet_filter.ResNetSimple18()
         elif args.model == 'resnet110':
-            net = resnet_pool.ResNetSimple110(args.inter_pool)
+            net = resnet_filter.ResNetSimple110()
         else:
             raise NotImplementedError
         
@@ -134,9 +135,8 @@ def main(args):
         start_epoch = checkpoint['epoch']
     
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4)
     
-    # optimizer = optim.Adam(net.parameters(), lr=args.lr, weight_decay=5e-4)
+
     def lr_schduler(epoch, lr_gamma=[0.1, 1, 0.01, 0.001]):
         if epoch<1:
             return 0.1
@@ -146,8 +146,16 @@ def main(args):
             return 0.1
         else:
             return 0.01
-
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_schduler)
+    
+    if args.optimizer == 'sgd':
+        optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4)
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_schduler)
+    elif args.optimizer == 'adam':
+        optimizer = optim.Adam(net.parameters(), lr=args.lr, weight_decay=5e-4)
+        scheduler = lambda epoch: 1
+    else:
+        raise NotImplementedError
+    
     # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, [82, 123], gamma=0.1)
     # Training
     trainer = Trainer(net, trainloader, testloader, optimizer, args.device, criterion, args.logger, args.writer, args.model_dir_full)
