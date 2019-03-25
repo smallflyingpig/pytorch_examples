@@ -98,37 +98,37 @@ def main(args):
     
     if args.pool_type == 'max_cp':
         if args.model == 'resnet18':
-            net = resnet_max_cp.ResNetSimple18()
+            net = resnet_max_cp.ResNetSimple18(args.block_type)
         elif args.model == 'resnet110':
-            net = resnet_max_cp.ResNetSimple110()
+            net = resnet_max_cp.ResNetSimple110(args.block_type)
         else:
             raise NotImplementedError
     elif args.pool_type == 'none':
         if args.model == 'resnet18':
-            net = resnet.ResNetSimple18()
+            net = resnet.ResNetSimple18(args.block_type)
         elif args.model == 'resnet110':
-            net = resnet.ResNetSimple110()
+            net = resnet.ResNetSimple110(args.block_type)
         else:
             raise NotImplementedError
     elif args.pool_type == 'pool':
         if args.model == 'resnet18':
             net = resnet_pool.ResNetSimple18()
         elif args.model == 'resnet110':
-            net = resnet_pool.ResNetSimple110()
+            net = resnet_pool.ResNetSimple110(args.block_type)
         else:
             raise NotImplementedError
     elif args.pool_type == 'filter':
         if args.model == 'resnet18':
-            net = resnet_filter.ResNetSimple18()
+            net = resnet_filter.ResNetSimple18(args.block_type)
         elif args.model == 'resnet110':
-            net = resnet_filter.ResNetSimple110()
+            net = resnet_filter.ResNetSimple110(args.block_type)
         else:
             raise NotImplementedError
     elif args.pool_type == 'cn':
         if args.model == 'resnet18':
-            net = resnet_cn.ResNetSimple18()
+            net = resnet_cn.ResNetSimple18(args.block_type)
         elif args.model == 'resnet110':
-            net = resnet_cn.ResNetSimple110()
+            net = resnet_cn.ResNetSimple110(args.block_type)
         else:
             raise NotImplementedError
     else:
