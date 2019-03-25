@@ -37,6 +37,8 @@ def parser():
     parser.add_argument('--no_cuda', action='store_true', default=False, help="disable the Cuda")
     parser.add_argument('--block_type', type=str, default='bottleneck', help='set the block type')
     parser.add_argument('--optimizer', type=str, default='adam', help='adam or sgd')
+    parser.add_argument('--batch_size', type=int, default=128, help='batch size')
+    parser.add_argument('--base_dim', type=int, default=64, help='default base dim for resnet, default 64')
     args = parser.parse_args()
     
     args.device = 'cuda' if not args.no_cuda and torch.cuda.is_available() else 'cpu'
@@ -84,10 +86,10 @@ def main(args):
     
     trainset = torchvision.datasets.CIFAR10(root=args.data_root, train=True, download=True, transform=transform_train)
     param = {"num_workers":4, "pin_memory":True} if args.device=='cuda' else {}
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=128, shuffle=True, **param)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, shuffle=True, **param)
     
     testset = torchvision.datasets.CIFAR10(root=args.data_root, train=False, download=True, transform=transform_test)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=100, shuffle=False, **param)
+    testloader = torch.utils.data.DataLoader(testset, batch_size=args.batch_size, shuffle=False, **param)
     
     classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
     
@@ -96,9 +98,9 @@ def main(args):
     
     if args.pool:
         if args.model == 'resnet18':
-            net = resnet_filter.ResNetSimple18()
+            net = resnet_filter.ResNetSimple18(args.base_dim)
         elif args.model == 'resnet110':
-            net = resnet_filter.ResNetSimple110()
+            net = resnet_filter.ResNetSimple110(args.base_dim)
         else:
             raise NotImplementedError
         
