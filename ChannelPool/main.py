@@ -31,7 +31,7 @@ def parser():
     parser.add_argument('--model', type=str, default='resnet18', help="model type, resnet18, resnet101, default resnet18")
     parser.add_argument('--log_dir', type=str, default='default')
     parser.add_argument('--data_root', type=str, default="../data/cifar10", help="")
-    parser.add_argument('--epoch', type=int, default=200, help="total epoch for the training")
+    parser.add_argument('--epoch', type=int, default=350, help="total epoch for the training")
     parser.add_argument('--val_interval', type=int, default=5, help="epoch interval")
     parser.add_argument('--inter_pool', action='store_true', default=False, help="enable inter pool")
     parser.add_argument('--no_cuda', action='store_true', default=False, help="disable the Cuda")
@@ -161,15 +161,15 @@ def main(args):
     criterion = nn.CrossEntropyLoss()
     
 
-    def lr_schduler(epoch, lr_gamma=[0.1, 1, 0.01, 0.001]):
-        if epoch<1:
-            return 0.1
-        elif epoch<83:
-            return 1
-        elif epoch<123:
-            return 0.1
+    def lr_schduler(epoch, lr_gamma=[0.1, 1, 0.1, 0.01]):
+        if epoch<2:
+            return lr_gamma[0]
+        elif epoch<150:
+            return lr_gamma[1]
+        elif epoch<250:
+            return lr_gamma[2]
         else:
-            return 0.01
+            return lr_gamma[3]
     
     if args.optimizer == 'sgd':
         optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4)
