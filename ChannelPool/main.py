@@ -152,7 +152,7 @@ def main(args):
         scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_schduler)
     elif args.optimizer == 'adam':
         optimizer = optim.Adam(net.parameters(), lr=args.lr, weight_decay=5e-4)
-        scheduler = lambda epoch: 1
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda epoch: 1)
     else:
         raise NotImplementedError
     
