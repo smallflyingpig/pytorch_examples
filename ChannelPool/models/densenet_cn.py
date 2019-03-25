@@ -82,7 +82,7 @@ class DenseNet(nn.Module):
         out = self.trans2(self.dense2(out))
         out = self.trans3(self.dense3(out))
         out = self.dense4(out)
-        out = F.avg_pool2d(self.bn(F.relu(self.channel_norm(out)), 4))
+        out = F.avg_pool2d(self.bn(F.relu(self.channel_norm(out))), 4)
         out = out.view(out.size(0), -1)
         out = self.linear(out)
         return out

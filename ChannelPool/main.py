@@ -107,7 +107,7 @@ def main(args):
         'cn':{
             'resnet18':{'model':resnet_cn.ResNetSimple18, 'param':args.block_type}, 
             'resnet110':{'model':resnet_cn.ResNetSimple110, 'param':args.block_type},
-            'densetnet':{'model':densenet_cn.densenet_cifar, 'param':args.growing_rate}
+            'densenet':{'model':densenet_cn.densenet_cifar, 'param':args.growing_rate}
             }
     }
     net = model_dict_all[args.pool_type][args.model]['model'](model_dict_all[args.pool_type][args.model]['param'])
