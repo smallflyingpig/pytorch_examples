@@ -1,16 +1,20 @@
 import torch.nn as nn
 import torch.nn.functional as F 
+import torch
 class ChannelNorm(nn.Module):
     def __init__(self, channel, affine=True):
         super(ChannelNorm, self).__init__()
         self.affine = affine
-        self.instance_norm = nn.InstanceNorm1d(channel, affine=affine)
+        self.param = nn.Parameter(torch.zeros(channel))
     
     def forward(self, x):
         B, C, H, W = x.size()
-        x = x.permute(0, 2,3, 1).view(B, H*W, C)
-        
-        x = self.instance_norm(x)
-        x = x.view(B, H, W, C).permute(0,3,1,2)
+        x = x.view(B,C,H*W)
+        mean = x.mean(dim=2).view(B,C,1).repeat(1,1,H*W)
+        x = (x-mean)
+        if self.affine:
+            std = x.std(dim=2).view(B,C,1).repeat(1,1,H*W)
+            x = x - self.param.view(1,1,H*W)*std
+        x = x.view(B,C,H,W) 
 
         return x
