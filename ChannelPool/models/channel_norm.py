@@ -4,7 +4,7 @@ import torch
 class ChannelNorm(nn.Module):
     def __init__(self, channel, affine=True):
         super(ChannelNorm, self).__init__()
-        self.affine = affine
+        self.affine = False #affine
         self.param = nn.Parameter(torch.zeros(channel))
     
     def forward(self, x):
