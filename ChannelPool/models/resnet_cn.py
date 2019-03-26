@@ -14,26 +14,30 @@ from models.channel_norm import ChannelNorm
 class BasicBlock(nn.Module):
     expansion = 1
 
-    def __init__(self, in_planes, planes, stride=1):
+    def __init__(self, in_planes, planes, input_shape, stride=1):
         super(BasicBlock, self).__init__()
+        input_shape_x = input_shape
         self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        input_shape = (input_shape[0]//stride, input_shape[1]//stride)
+        self.channel_norm1 = ChannelNorm(input_shape[0]*input_shape[1], affine=True)
         self.bn1 = nn.BatchNorm2d(planes)
+        self.channel_norm2 = ChannelNorm(input_shape[0]*input_shape[1], affine=True)
         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(planes)
-        self.channel_norm = ChannelNorm()
 
         self.shortcut = nn.Sequential()
         if stride != 1 or in_planes != self.expansion*planes:
             self.shortcut = nn.Sequential(
                 nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(self.expansion*planes)
+                #nn.BatchNorm2d(self.expansion*planes)
+                ChannelNorm(input_shape_x[0]//stride*input_shape_x[1]//stride, affine=True)
             )
 
     def forward(self, x):
-        out = self.bn1(F.relu(self.channel_norm(self.conv1(x))))
-        out = self.bn2(F.relu(self.channel_norm(self.conv2(out))))
+        out = self.bn1(F.relu(self.channel_norm1(self.conv1(x))))
+        out = self.channel_norm2(self.conv2(out))
         out += self.shortcut(x)
-        out = F.relu(out)
+        out = self.bn2(F.relu(out))
         return out
 
 
@@ -41,31 +45,38 @@ from models.channel_norm import ChannelNorm
 class Bottleneck(nn.Module):
     expansion = 4
 
-    def __init__(self, in_planes, planes, stride=1):
+    def __init__(self, in_planes, planes, input_shape, stride=1):
         super(Bottleneck, self).__init__()
+        input_shape_x = input_shape
         self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=1, bias=False)
+        self.channel_norm1 = ChannelNorm(input_shape[0]*input_shape[1], affine=True)
         self.bn1 = nn.BatchNorm2d(planes)
         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        input_shape = (input_shape[0]//stride, input_shape[1]//stride)
+        self.channel_norm2 = ChannelNorm(input_shape[0]*input_shape[1], affine=True)
         self.bn2 = nn.BatchNorm2d(planes)
         self.conv3 = nn.Conv2d(planes, self.expansion*planes, kernel_size=1, bias=False)
+        self.channel_norm3 = ChannelNorm(input_shape[0]*input_shape[1], affine=True)
         self.bn3 = nn.BatchNorm2d(self.expansion*planes)
-        self.channel_norm = ChannelNorm()
+        
+        
 
         self.shortcut = nn.Sequential()
         if stride != 1 or in_planes != self.expansion*planes:
             self.shortcut = nn.Sequential(
                 nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(self.expansion*planes)
+                # input_shape_x = (input_shape_x[0]//stride, input_shape_x[1]//stride)
+                ChannelNorm(input_shape_x[0]//stride*input_shape_x[1]//stride, affine=True)
             )
 
     def forward(self, x):
-        out = F.relu(self.channel_norm(x))
-        out = F.relu(self.bn1(self.conv1(x)))
-        out = F.relu(self.channel_norm(self.conv2(out)))
-        out = self.bn3(self.conv3(out))
+        #out = F.relu(self.channel_norm(x))
+        out = self.bn1(F.relu(self.channel_norm1(self.conv1(x))))
+        out = self.bn2(F.relu(self.channel_norm2(self.conv2(out))))
+        out = self.channel_norm3(self.conv3(out))
         # out = self.pool_layer(out)
         out += self.shortcut(x)
-        out = F.relu(out)
+        out = self.bn3(F.relu(out))
         return out
 
         # out = F.relu(self.bn1(self.conv1(x)))
@@ -129,22 +140,25 @@ def ResNet152():
 
 
 class ResNetSimple(nn.Module):
-    def __init__(self, block, num_blocks, num_classes=10):
+    def __init__(self, block, num_blocks, num_classes=10, input_shape=(32,32)):
         super(ResNetSimple, self).__init__()
         self.in_planes = 16
 
         self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(16)
-        self.layer1 = self._make_layer(block, 16, num_blocks[0], stride=1)
-        self.layer2 = self._make_layer(block, 32, num_blocks[1], stride=2)
-        self.layer3 = self._make_layer(block, 64, num_blocks[2], stride=2)
+        self.layer1 = self._make_layer(block, 16, num_blocks[0], stride=1, input_shape=input_shape)
+        self.layer2 = self._make_layer(block, 32, num_blocks[1], stride=2, input_shape=input_shape)
+        input_shape = (input_shape[0]//2, input_shape[1]//2)
+        self.layer3 = self._make_layer(block, 64, num_blocks[2], stride=2, input_shape=input_shape)
+        input_shape = (input_shape[0]//2, input_shape[1]//2)
         self.linear = nn.Linear(64*block.expansion, num_classes)
 
-    def _make_layer(self, block, planes, num_blocks, stride):
+    def _make_layer(self, block, planes, num_blocks, stride, input_shape):
         strides = [stride] + [1]*(num_blocks-1)
         layers = []
         for stride in strides:
-            layers.append(block(self.in_planes, planes, stride))
+            layers.append(block(self.in_planes, planes, stride=stride, input_shape=input_shape))
+            input_shape = (input_shape[0]//stride, input_shape[1]//stride)
             self.in_planes = planes * block.expansion
         return nn.Sequential(*layers)
 
@@ -161,11 +175,11 @@ class ResNetSimple(nn.Module):
 
 def ResNetSimple18(block_type='bottleneck'):
     block = Bottleneck if block_type=='bottleneck' else BasicBlock
-    return ResNetSimple(block, [3,3,3])
+    return ResNetSimple(block, [3,3,3], input_shape=(32, 32))
 
 def ResNetSimple110(block_type='bottleneck'):
     block = Bottleneck if block_type=='bottleneck' else BasicBlock
-    return ResNetSimple(block, [18,18,18])
+    return ResNetSimple(block, [18,18,18], input_shape=(32,32))
 
 
 

@@ -1,10 +1,10 @@
 import torch.nn as nn
 import torch.nn.functional as F 
 class ChannelNorm(nn.Module):
-    def __init__(self, affine=False):
+    def __init__(self, channel, affine=True):
         super(ChannelNorm, self).__init__()
         self.affine = affine
-        self.instance_norm = nn.InstanceNorm1d(affine=affine)
+        self.instance_norm = nn.InstanceNorm1d(channel, affine=affine)
     
     def forward(self, x):
         B, C, H, W = x.size()
