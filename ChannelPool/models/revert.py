@@ -10,8 +10,8 @@ class Revert(nn.Module):
 
     def forward(self, x):
         B,C,H,W = x.size()
-        x = x.view(B,1,C,H,W)
-        x = torch.cat([x, -x], dim=1).transpose(1,2).contiguous().view(B,C*2, H, W)
+        x = x.view(B,C,1,H,W)
+        x = torch.cat([x, -x], dim=2).view(B,C*2, H, W)
         x = self.bn(F.relu(x))
         x = self.conv(x)
         return x
