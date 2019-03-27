@@ -16,7 +16,7 @@ import argparse
 import numpy as np
 
 # sys.path.append(os.getcwd())
-from models import resnet, resnet_pool, resnet_filter, resnet_max_cp, resnet_cn, densenet, densenet_cn
+from models import resnet, resnet_pool, resnet_filter, resnet_max_cp, resnet_cn, densenet, densenet_cn, resnet_revert, densenet_revert
 from utils import progress_bar
 from trainer import Trainer
 import logging
@@ -108,7 +108,13 @@ def main(args):
             'resnet18':{'model':resnet_cn.ResNetSimple18, 'param':args.block_type}, 
             'resnet110':{'model':resnet_cn.ResNetSimple110, 'param':args.block_type},
             'densenet':{'model':densenet_cn.densenet_cifar, 'param':args.growing_rate}
-            }
+            },
+        'revert':
+            {
+            'resnet18':{'model':resnet_revert.ResNetSimple18, 'param':args.block_type}, 
+            'resnet110':{'model':resnet_revert.ResNetSimple110, 'param':args.block_type},
+            'densenet':{'model':densenet_revert.densenet_cifar, 'param':args.growing_rate}
+            },
     }
     net = model_dict_all[args.pool_type][args.model]['model'](model_dict_all[args.pool_type][args.model]['param'])
         
