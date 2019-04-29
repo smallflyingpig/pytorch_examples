@@ -16,12 +16,14 @@ import argparse
 import numpy as np
 
 # sys.path.append(os.getcwd())
-from models import resnet, resnet_pool, resnet_filter, resnet_max_cp, resnet_cn, densenet, densenet_cn, resnet_revert, densenet_revert
+from models import resnet, resnet_pool, resnet_filter, resnet_max_cp, resnet_cn, densenet, densenet_cn, \
+    resnet_revert, densenet_revert, resnet_attn_pooling, densenet_attn_pooling
 from utils import progress_bar
 from trainer import Trainer
 import logging
 from tensorboardX import SummaryWriter
 
+torch.manual_seed(0)
     
 def parser():
     parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
@@ -115,6 +117,13 @@ def main(args):
             'resnet110':{'model':resnet_revert.ResNetSimple110, 'param':args.block_type},
             'densenet':{'model':densenet_revert.densenet_cifar, 'param':args.growing_rate}
             },
+        'attn_pool':
+            {
+            'resnet18':{'model':resnet_attn_pooling.ResNetSimple18, 'param':args.block_type}, 
+            'resnet110':{'model':resnet_attn_pooling.ResNetSimple110, 'param':args.block_type},
+            'densenet':{'model':densenet_attn_pooling.densenet_cifar, 'param':args.growing_rate}
+                
+            }
     }
     net = model_dict_all[args.pool_type][args.model]['model'](model_dict_all[args.pool_type][args.model]['param'])
         
