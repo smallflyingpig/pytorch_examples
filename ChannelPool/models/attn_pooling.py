@@ -9,6 +9,7 @@ class AttnPooling(nn.Module):
     
     def forward(self, x):
         attn_map = self.attn_layer(x)
+        attn_map = torch.sigmoid(attn_map)
         x = x*attn_map
-        x = self.avg_pooling(x)
+        x = self.avg_pooling(x)/self.avg_pooling(attn_map)
         return x

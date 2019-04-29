@@ -27,7 +27,7 @@ class Transition(nn.Module):
         super(Transition, self).__init__()
         self.bn = nn.BatchNorm2d(in_planes)
         self.conv = nn.Conv2d(in_planes, out_planes, kernel_size=1, bias=False)
-        self.avg_pooling = AttnPooling(out_planes, 2)
+        self.avg_pooling = AttnPooling(out_planes, 2, 2, 0)
 
     def forward(self, x):
         out = self.conv(F.relu(self.bn(x)))
@@ -81,7 +81,7 @@ class DenseNet(nn.Module):
         out = self.trans2(self.dense2(out))
         out = self.trans3(self.dense3(out))
         out = self.dense4(out)
-        out = self.avg_pooling(F.relu(self.bn(out)), 4)
+        out = self.avg_pooling(F.relu(self.bn(out)))
         out = out.view(out.size(0), -1)
         out = self.linear(out)
         return out
