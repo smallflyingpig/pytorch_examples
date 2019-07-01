@@ -8,7 +8,7 @@ class ReSampleLayer(nn.Module):
         super(ReSampleLayer, self).__init__()
         self.transform = nn.Conv2d(in_channel, 2, 3,1,1, bias=False)
         self.init_weight()
-        
+
     def init_weight(self):
         self.transform.weight.data.fill_(0.1)
 
@@ -18,12 +18,14 @@ class ReSampleLayer(nn.Module):
         grid_x = F.softmax(grid[:,1,:,:], dim=2)
         grid_x, grid_y = 1-grid_x, 1-grid_y
         for idx in range(H-1):
-            grid_x[:, idx+1] = grid_x[:, idx] + grid_x[:, idx+1]
-        grid_x = grid_x/(H-1)
+            grid_y[:, idx+1] = grid_y[:, idx] + grid_y[:, idx+1]
+        grid_y = grid_y /(H-1)*2-1 #[-1,1]
         for idx in range(W-1):
-            grid_y[:,:,idx+1] = grid_y[:,:,idx] + grid_y[:,:,idx+1]
-        grid_y = grid_y/(W-1)
-        grid = torch.stack([grid_x, grid_y], dim=1)
+            grid_x[:,:,idx+1] = grid_x[:,:,idx] + grid_x[:,:,idx+1]
+        grid_x = grid_x /(W-1)*2-1 #[-1,1]
+        grid = torch.stack([grid_y, grid_x], dim=1).permute(0,2,3,1)
+        # print(grid.max(), grid.min())
+
         return grid
 
     def forward(self, x):
