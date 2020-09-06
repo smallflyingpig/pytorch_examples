@@ -67,6 +67,13 @@ class Net(torch.nn.Module):
         self.data = self.log_softmax(self.data)
         return self.data
 
+    def get_feature(self, input_data):
+        assert(input_data.shape[-3:] == torch.Size([1,28,28]))  #batch_sizex1x28x28
+        data = F.relu(F.max_pool2d(self.conv1(input_data),2)) #batch_sizex10x12x12
+        data = self.dropout(self.conv2(data)) #batch_sizex10x8x8
+        return data
+
+
 model = Net()
 optimizer = optim.SGD(model.parameters(), lr=args.learning_rate, momentum=0.5)
 loss_func = torch.nn.NLLLoss()
